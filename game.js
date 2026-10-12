@@ -2166,13 +2166,44 @@ $("startForm").addEventListener("submit", event => {
   }
 });
 
+function checkMusicSearchForRoom(query) {
+  const clean = String(query || "").trim().replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+  const existing = document.getElementById("roomSearchSuggestionBanner");
+  if (existing) existing.remove();
+
+  if (clean.length === 6 && /^[A-Z0-9]{6}$/.test(clean) && window.songTriviaParty) {
+    const banner = document.createElement("div");
+    banner.id = "roomSearchSuggestionBanner";
+    banner.className = "room-search-banner";
+    banner.innerHTML = `<span>🏠 ตรวจพบรหัสห้อง <strong>${clean}</strong> ในช่องค้นหา</span> <button type="button" class="small-action-button" id="joinBannerRoomBtn">ค้นหาและเข้าห้องนี้ →</button>`;
+    const resultsEl = $("searchResults");
+    if (resultsEl) {
+      resultsEl.insertAdjacentElement("beforebegin", banner);
+      document.getElementById("joinBannerRoomBtn")?.addEventListener("click", () => {
+        window.songTriviaParty?.joinRoom(clean);
+      });
+    }
+  }
+}
+
 $("musicSearch").addEventListener("input", () => {
+  checkMusicSearchForRoom($("musicSearch").value);
   updateSettings();
   clearTimeout(searchCatalogTimer);
   searchCatalogTimer = window.setTimeout(() => {
     scheduleCatalogRefresh(0);
     searchArtistChoices($("musicSearch").value);
   }, 350);
+});
+
+$("musicSearch").addEventListener("keydown", event => {
+  if (event.key === "Enter") {
+    const clean = $("musicSearch").value.trim().replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (clean.length === 6 && /^[A-Z0-9]{6}$/.test(clean) && window.songTriviaParty) {
+      event.preventDefault();
+      window.songTriviaParty.joinRoom(clean);
+    }
+  }
 });
 $("questionTimeSelect").addEventListener("change", updateSettings);
 $("roundCountSelect").addEventListener("change", updateSettings);

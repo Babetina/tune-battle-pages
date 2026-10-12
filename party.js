@@ -43,6 +43,7 @@
   let supabaseClient = null;
   let howToIndex = 0;
   let roomResponseTimer = null;
+  let requestStateInterval = null;
   let roomStateReceived = false;
 
   function showScreen(screenId) {
@@ -133,6 +134,19 @@
     element.classList.toggle("error", error);
   }
 
+  function extractRoomCode(raw) {
+    if (!raw) return "";
+    let str = String(raw).trim();
+    const urlMatch = str.match(/[?&]room=([A-Za-z0-9]+)/i);
+    if (urlMatch) return urlMatch[1].toUpperCase();
+    str = str.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (str.length > 6) {
+      const sub = str.match(/[A-Z0-9]{6}/);
+      if (sub) return sub[0];
+    }
+    return str;
+  }
+
   function makeRoomCode() {
     const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     const bytes = crypto.getRandomValues(new Uint8Array(6));
@@ -199,12 +213,16 @@
 
   async function send(type, data = {}) {
     if (!party.channel) return;
-    const status = await party.channel.send({
-      type: "broadcast",
-      event: "room-event",
-      payload: { type, senderId: party.playerId, ...data }
-    });
-    if (status !== "ok") throw new Error(`ส่งข้อมูลห้องไม่สำเร็จ (${status})`);
+    try {
+      const status = await party.channel.send({
+        type: "broadcast",
+        event: "room-event",
+        payload: { type, senderId: party.playerId, ...data }
+      });
+      return status;
+    } catch (error) {
+      console.warn(`ส่งข้อมูลห้อง (${type}) ไม่สำเร็จ:`, error);
+    }
   }
 
   async function sendRoomState() {
@@ -342,6 +360,7 @@
       case "join-rejected":
         if (payload.roomCode !== party.roomCode || payload.targetId !== party.playerId) break;
         clearTimeout(roomResponseTimer);
+        clearInterval(requestStateInterval);
         setMessage("joinMessage", payload.message || "ไม่สามารถเข้าร่วมห้องนี้ได้", true);
         await leaveParty(false);
         showScreen("joinParty");
@@ -350,6 +369,7 @@
         if (payload.roomCode !== party.roomCode || payload.targetId !== party.playerId) break;
         roomStateReceived = true;
         clearTimeout(roomResponseTimer);
+        clearInterval(requestStateInterval);
         setMessage("roomMessage", "เข้าห้องแล้ว รอโฮสต์เริ่มรอบถัดไปเพื่อเข้าร่วมเกม");
         showScreen("partyRoom");
         renderPlayers();
@@ -358,6 +378,7 @@
         if (party.isHost || payload.roomCode !== party.roomCode) break;
         roomStateReceived = true;
         clearTimeout(roomResponseTimer);
+        clearInterval(requestStateInterval);
         party.isHost = false;
         setMessage("joinMessage", "");
         $("roomNextButton").hidden = true;
@@ -492,20 +513,62 @@
     };
     party.lateJoinQueue.clear();
     roomStateReceived = false;
+    clearTimeout(roomResponseTimer);
+    clearInterval(requestStateInterval);
+
+    // Remove any previously active channel from Supabase client to prevent duplicate/stale subscriptions
+    if (party.channel) {
+      try { await client.removeChannel(party.channel); } catch (_) {}
+      party.channel = null;
+    }
+    try {
+      const existing = client.getChannels().find(ch => ch.topic === `realtime:songtrivia-room-${roomCode}`);
+      if (existing) {
+        await client.removeChannel(existing);
+      }
+    } catch (_) {}
+
     const channel = client.channel(`songtrivia-room-${roomCode}`, {
       config: {
-        broadcast: { ack: true, self: false },
+        broadcast: { ack: false, self: false },
         presence: { key: party.playerId }
       }
     });
     party.channel = channel;
+
     channel.on("broadcast", { event: "room-event" }, ({ payload }) => {
       handleEvent(payload).catch(error => {
         console.error("Party message failed:", error);
         setMessage("roomMessage", error.message, true);
       });
     });
-    channel.on("presence", { event: "sync" }, renderPlayers);
+
+    const onPresenceUpdate = () => {
+      renderPlayers();
+      if (party.isHost) {
+        if (!party.gameRunning) {
+          sendRoomState().catch(console.error);
+        }
+      } else {
+        const host = presencePlayers().find(player => player.host);
+        if (host && !roomStateReceived) {
+          roomStateReceived = true;
+          clearTimeout(roomResponseTimer);
+          clearInterval(requestStateInterval);
+          setMessage("joinMessage", "");
+          $("roomNextButton").hidden = true;
+          $("inviteButton").hidden = true;
+          $("copyRoomButton").hidden = true;
+          setMessage("roomMessage", "รอโฮสต์ตั้งค่าและเริ่มเกมได้เลย");
+          showScreen("partyRoom");
+          renderPlayers();
+        }
+      }
+    };
+
+    channel.on("presence", { event: "sync" }, onPresenceUpdate);
+    channel.on("presence", { event: "join" }, onPresenceUpdate);
+
     await new Promise((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error("เชื่อมต่อห้องไม่ทันเวลา ลองใหม่อีกครั้ง")), 10000);
       channel.subscribe(status => {
@@ -518,6 +581,7 @@
         }
       });
     });
+
     const trackStatus = await channel.track({
       id: party.playerId,
       name: party.name,
@@ -526,14 +590,64 @@
       joinedAt: Date.now()
     });
     if (trackStatus !== "ok") throw new Error(`เข้าห้องไม่สำเร็จ (${trackStatus})`);
+
     updateRoomLink();
     renderPlayers();
     syncRoomProfileInputs();
+
     if (!isHost) {
-      await send("request-state");
+      // Immediate presence check in case host is already in the channel
+      const hostFound = presencePlayers().find(player => player.host);
+      if (hostFound) {
+        roomStateReceived = true;
+        clearTimeout(roomResponseTimer);
+        setMessage("joinMessage", "");
+        $("roomNextButton").hidden = true;
+        $("inviteButton").hidden = true;
+        $("copyRoomButton").hidden = true;
+        setMessage("roomMessage", "รอโฮสต์ตั้งค่าและเริ่มเกมได้เลย");
+        showScreen("partyRoom");
+        renderPlayers();
+      }
+
+      // Retry sending request-state to handle any network race conditions
+      const sendReq = async () => {
+        if (roomStateReceived || !party.channel) return;
+        await send("request-state", { roomCode: party.roomCode });
+        const host = presencePlayers().find(player => player.host);
+        if (host && !roomStateReceived) {
+          roomStateReceived = true;
+          clearTimeout(roomResponseTimer);
+          clearInterval(requestStateInterval);
+          setMessage("joinMessage", "");
+          $("roomNextButton").hidden = true;
+          $("inviteButton").hidden = true;
+          $("copyRoomButton").hidden = true;
+          setMessage("roomMessage", "รอโฮสต์ตั้งค่าและเริ่มเกมได้เลย");
+          showScreen("partyRoom");
+          renderPlayers();
+        }
+      };
+
+      await sendReq();
+      requestStateInterval = window.setInterval(sendReq, 1000);
+
       roomResponseTimer = window.setTimeout(() => {
+        clearInterval(requestStateInterval);
         if (!roomStateReceived) {
-          setMessage("joinMessage", "ไม่พบโฮสต์ที่ออนไลน์อยู่ในห้องนี้ ตรวจรหัสแล้วลองอีกครั้ง", true);
+          const host = presencePlayers().find(player => player.host);
+          if (host) {
+            roomStateReceived = true;
+            setMessage("joinMessage", "");
+            $("roomNextButton").hidden = true;
+            $("inviteButton").hidden = true;
+            $("copyRoomButton").hidden = true;
+            setMessage("roomMessage", "รอโฮสต์ตั้งค่าและเริ่มเกมได้เลย");
+            showScreen("partyRoom");
+            renderPlayers();
+            return;
+          }
+          setMessage("joinMessage", "ไม่พบห้องนี้ หรือโฮสต์ไม่ได้ออนไลน์อยู่ (ตรวจรหัสห้องแล้วลองอีกครั้ง)", true);
           leaveParty(false);
           showScreen("joinParty");
         }
@@ -550,13 +664,21 @@
 
   async function leaveParty(returnHome = true) {
     clearTimeout(roomResponseTimer);
+    clearInterval(requestStateInterval);
     clearTimeout(party.roundReadyTimer);
     clearTimeout(party.resultAdvanceTimer);
     if (party.channel) {
       const channel = party.channel;
       party.channel = null;
-      const status = await channel.unsubscribe();
-      if (status !== "ok") console.warn("Party room did not unsubscribe cleanly:", status);
+      try {
+        if (supabaseClient) {
+          await supabaseClient.removeChannel(channel);
+        } else {
+          await channel.unsubscribe();
+        }
+      } catch (error) {
+        console.warn("Party room did not unsubscribe cleanly:", error);
+      }
     }
     party.active = false;
     party.gameRunning = false;
@@ -816,7 +938,25 @@
     getFinalRank: () => party.finalRank,
     getFinalStandings: () => party.finalStandings,
     requestReturnToRoom,
-    leave: () => leaveParty()
+    leave: () => leaveParty(),
+    joinRoom: (rawCode) => {
+      const code = extractRoomCode(rawCode);
+      if (!code) return;
+      $("joinCode").value = code;
+      showScreen("joinParty");
+      const currentName = $("joinName").value.trim() || $("playerName")?.value.trim() || "";
+      if (currentName) {
+        $("joinName").value = currentName;
+        setMessage("joinMessage", `พบรหัสห้อง ${code} กำลังค้นหาห้อง...`);
+        connect(code, { name: currentName, avatar: $("joinAvatarSelect")?.value || "🎧" }, false).catch(error => {
+          console.error("Unable to join party room:", error);
+          setMessage("joinMessage", error.message || "ไม่สามารถเชื่อมต่อห้องได้", true);
+        });
+      } else {
+        setMessage("joinMessage", `พบรหัสห้อง ${code} — ใส่ชื่อเล่นแล้วกดค้นหาและเข้าร่วมห้องได้เลย`);
+        $("joinName").focus();
+      }
+    }
   };
 
   $("avatarSelect").addEventListener("change", () => {
@@ -935,11 +1075,12 @@
   $("joinPartyForm").addEventListener("submit", async event => {
     event.preventDefault();
     const name = $("joinName").value.trim();
-    const roomCode = $("joinCode").value.trim().toUpperCase();
+    const rawCode = $("joinCode").value;
+    const roomCode = extractRoomCode(rawCode);
     const avatar = $("joinAvatarSelect")?.value || "🎧";
     if (!name) return $("joinName").focus();
-    if (!/^[A-HJ-NP-Z2-9]{6}$/.test(roomCode)) {
-      setMessage("joinMessage", "รหัสห้องต้องมี 6 ตัวอักษรหรือตัวเลข", true);
+    if (!/^[A-Z0-9]{6}$/.test(roomCode)) {
+      setMessage("joinMessage", "รหัสห้องต้องมี 6 ตัวอักษรหรือตัวเลข (เช่น A7K9Q2)", true);
       return $("joinCode").focus();
     }
     setMessage("joinMessage", "กำลังค้นหาห้อง...");
@@ -947,9 +1088,29 @@
       await connect(roomCode, { name, avatar }, false);
     } catch (error) {
       console.error("Unable to join a party room:", error);
-      setMessage("joinMessage", error.message, true);
+      setMessage("joinMessage", error.message || "เกิดข้อผิดพลาดในการเชื่อมต่อห้อง", true);
       if (party.channel) await leaveParty(false);
     }
+  });
+
+  $("joinCode").addEventListener("input", () => {
+    const raw = $("joinCode").value;
+    const cleaned = extractRoomCode(raw);
+    if (cleaned.length <= 8 && cleaned !== raw) {
+      $("joinCode").value = cleaned;
+    }
+  });
+
+  $("homeSearchRoomForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const rawCode = $("homeRoomSearchInput")?.value;
+    const code = extractRoomCode(rawCode);
+    if (!code || !/^[A-Z0-9]{6}$/.test(code)) {
+      alert("กรุณาใส่รหัสห้อง 6 หลัก (เช่น A7K9Q2)");
+      $("homeRoomSearchInput")?.focus();
+      return;
+    }
+    window.songTriviaParty?.joinRoom(code);
   });
 
   $("howtoPrevious").addEventListener("click", () => {
@@ -1050,8 +1211,11 @@
   showHowTo();
   const inviteCode = new URLSearchParams(window.location.search).get("room");
   if (inviteCode) {
-    $("joinCode").value = inviteCode.toUpperCase();
+    const clean = extractRoomCode(inviteCode);
+    $("joinCode").value = clean;
     showScreen("joinParty");
+    setMessage("joinMessage", `พบรหัสห้อง ${clean} — ใส่ชื่อแล้วกดค้นหาและเข้าร่วมห้องได้เลย`);
+    $("joinName").focus();
   } else {
     showScreen("home");
   }

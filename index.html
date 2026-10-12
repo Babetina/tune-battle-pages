@@ -59,8 +59,18 @@
             <button class="primary-button" type="button" data-home-action="create">＋ สร้างห้อง</button>
             <button class="secondary-button" type="button" data-home-action="join">↪ เข้าร่วมห้อง</button>
           </div>
+          <form class="hero-search-bar" id="homeSearchRoomForm" role="search" aria-label="ค้นหาห้องปาร์ตี้">
+            <span class="hero-search-icon" aria-hidden="true">⌕</span>
+            <input id="homeRoomSearchInput" maxlength="12" placeholder="ใส่รหัสห้องเพื่อค้นหาห้อง (เช่น A7K9Q2)..." autocomplete="off">
+            <button type="submit" class="hero-search-btn">ค้นหาห้อง</button>
+          </form>
+        <div class="party-hero-art" aria-hidden="true">
+          <div class="hero-art-glow"></div>
+          <img class="hero-art-emblem" src="apple-touch-icon.png" alt="" width="128" height="128">
+          <span class="hero-float-note note-1">♫</span>
+          <b class="hero-float-note note-2">♪</b>
+          <i class="hero-float-note note-3">♬</i>
         </div>
-        <div class="party-hero-art" aria-hidden="true"><span>♫</span><b>♪</b><i>♬</i></div>
       </article>
       <div class="solo-promo">
         <div><p class="eyebrow">SOLO MODE</p><h2>อยากเล่นคนเดียว?</h2><p>เลือกแนวเพลง ศิลปิน ยุค หรือเพลย์ลิสต์ที่ชอบได้เลย</p></div>
@@ -130,7 +140,7 @@
         <p class="eyebrow">เข้าร่วมห้องปาร์ตี้</p>
       </div>
       <form class="join-card" id="joinPartyForm">
-        <h1>พร้อมทายเพลงหรือยัง?</h1>
+        <h1>ค้นหาและเข้าร่วมห้อง</h1>
         <div class="profile-edit">
           <label class="avatar-picker">
             <span id="joinAvatarPreview" aria-hidden="true">🎧</span>
@@ -147,10 +157,10 @@
           </label>
           <label class="profile-name-field"><span>เลือกอวาตาร์และชื่อเล่น</span><input id="joinName" maxlength="20" placeholder="ใส่ชื่อของคุณ" required></label>
         </div>
-        <label class="field-label" for="joinCode" style="margin-top: 14px;">รหัสห้อง</label>
-        <input id="joinCode" maxlength="8" placeholder="เช่น A7K9Q2" autocomplete="off" required>
+        <label class="field-label" for="joinCode" style="margin-top: 14px;">ค้นหารหัสห้อง</label>
+        <input id="joinCode" maxlength="12" placeholder="ใส่รหัสห้อง เช่น A7K9Q2" autocomplete="off" required>
         <p class="backend-notice" id="joinMessage" role="status"></p>
-        <button class="primary-button" type="submit">เข้าร่วมห้อง <span aria-hidden="true">→</span></button>
+        <button class="primary-button" type="submit">ค้นหาและเข้าร่วมห้อง <span aria-hidden="true">→</span></button>
       </form>
     </section>
 
