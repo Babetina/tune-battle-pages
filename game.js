@@ -173,6 +173,10 @@ let activeSong = null;
 let fallbackAttempted = false;
 let previewRequestId = 0;
 let requestedRounds = 10;
+let streak = 0;
+let gameHistory = [];
+let timerPausedAt = 0;
+let timerPausedElapsed = 0;
 let availableArtists = [...new Set(songs.map(song => song.artist))];
 const availableArtistDetails = new Map();
 const artistGenreCache = new Map();
@@ -361,6 +365,95 @@ function shuffle(items) {
     [shuffled[index], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[index]];
   }
   return shuffled;
+}
+
+/* ─── Web Audio feedback sounds ─── */
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(freq, type, duration, gainVal = 0.18) {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = type;
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(gainVal, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch (e) { /* ignore */ }
+}
+function playCorrectSound() {
+  playTone(660, 'sine', 0.12, 0.14);
+  setTimeout(() => playTone(880, 'sine', 0.18, 0.12), 80);
+}
+function playWrongSound() {
+  playTone(200, 'sawtooth', 0.22, 0.1);
+  setTimeout(() => playTone(160, 'sawtooth', 0.18, 0.08), 80);
+}
+
+/* ─── Confetti ─── */
+function launchConfetti() {
+  let canvas = document.getElementById('confettiCanvas');
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.id = 'confettiCanvas';
+    document.body.appendChild(canvas);
+  }
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const ctx = canvas.getContext('2d');
+  const particles = Array.from({ length: 110 }, () => ({
+    x: Math.random() * canvas.width,
+    y: -20,
+    r: Math.random() * 7 + 3,
+    d: Math.random() * 80 + 30,
+    color: ['#c5b8ff','#ffd166','#7dddb8','#ff9bae','#b9a7ff','#fff'][Math.floor(Math.random()*6)],
+    tilt: Math.random() * 10 - 5,
+    tiltAngleIncrement: (Math.random() * 0.07 + 0.05) * (Math.random() < 0.5 ? 1 : -1),
+    tiltAngle: 0,
+    speed: Math.random() * 2.5 + 1.2
+  }));
+  let frame = 0;
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+      p.tiltAngle += p.tiltAngleIncrement;
+      p.y += p.speed;
+      p.x += Math.sin(frame * 0.02 + p.d) * 0.8;
+      p.tilt = Math.sin(p.tiltAngle) * 12;
+      ctx.beginPath();
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = Math.max(0, 1 - p.y / canvas.height);
+      ctx.ellipse(p.x, p.y, p.r, p.r * 0.45, p.tilt, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    frame++;
+    if (frame < 200) requestAnimationFrame(draw);
+    else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.remove();
+    }
+  }
+  draw();
+}
+
+/* ─── Show share toast ─── */
+function showToast(message) {
+  document.querySelectorAll('.share-toast').forEach(el => el.remove());
+  const toast = document.createElement('div');
+  toast.className = 'share-toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('fade-out');
+    setTimeout(() => toast.remove(), 350);
+  }, 2200);
 }
 
 function getSelectedValues(containerId) {
@@ -1386,8 +1479,12 @@ function startGame() {
   questionIndex = 0;
   score = 0;
   correctAnswers = 0;
+  streak = 0;
+  gameHistory = [];
   seconds = questionTime;
   $("score").textContent = score;
+  $("streakPill").hidden = true;
+  $("streakCount").textContent = "0";
   $("lobby").hidden = true;
   $("results").hidden = true;
   $("game").hidden = false;
@@ -1471,7 +1568,9 @@ function showQuestion() {
     button.disabled = true;
     const letter = document.createElement("span");
     letter.className = "answer-letter";
-    letter.textContent = String.fromCharCode(65 + index);
+    const keyLabel = String.fromCharCode(65 + index);
+    letter.textContent = keyLabel;
+    letter.dataset.key = keyLabel;
     const answerCopy = document.createElement("span");
     answerCopy.className = "answer-copy";
     const answerTitle = document.createElement("span");
@@ -1619,12 +1718,15 @@ function beginTimer() {
   if (timerStarted || answered) return;
   timerStarted = true;
   questionStartedAt = performance.now();
+  timerPausedElapsed = 0;
   setAnswerButtonsEnabled(true);
   $("playLabel").textContent = "ฟังซ้ำ";
   $("feedback").textContent = "เลือกชื่อเพลงให้ถูกก่อนหมดเวลา!";
+  /* waveform */
+  $("playBtn").classList.add("playing");
 
   timer = setInterval(() => {
-    const elapsed = performance.now() - questionStartedAt;
+    const elapsed = timerPausedElapsed + (performance.now() - questionStartedAt);
     const remaining = Math.max(0, questionTime * 1000 - elapsed);
     seconds = Math.ceil(remaining / 1000);
     $("timer").textContent = seconds;
@@ -1705,19 +1807,53 @@ function finishQuestion(answer) {
   const isCorrect = finalAnswer === current.title;
   const elapsed = selectedAnswerElapsed ?? questionTime * 1000;
   const points = Math.max(0, Math.ceil((1 - elapsed / (questionTime * 1000)) * 100));
+
+  /* record history */
+  gameHistory.push({ song: current, isCorrect, points: isCorrect ? points : 0 });
+
   if (isCorrect) {
     correctAnswers++;
     score += points;
+    streak++;
     $("score").textContent = score;
-    $("feedback").textContent = `หมดเวลา! ถูกต้อง +${points} คะแนน — เฉลย: “${current.title}” — ${current.artist}`;
+    /* score pop */
+    const pill = document.querySelector(".score-pill");
+    pill.classList.remove("pop");
+    void pill.offsetWidth; /* reflow to restart */
+    pill.classList.add("pop");
+    pill.addEventListener("animationend", () => pill.classList.remove("pop"), { once: true });
+    /* streak */
+    const streakPill = $("streakPill");
+    $("streakCount").textContent = streak;
+    streakPill.hidden = streak < 2;
+    if (streak >= 2) {
+      streakPill.classList.toggle("hot", streak >= 4);
+      streakPill.classList.remove("pop");
+      void streakPill.offsetWidth;
+      streakPill.classList.add("pop");
+      streakPill.addEventListener("animationend", () => streakPill.classList.remove("pop"), { once: true });
+    }
+    playCorrectSound();
+    $("feedback").textContent = streak >= 3
+      ? `🔥 STREAK x${streak}! ถูกต้อง +${points} คะแนน — "${current.title}" — ${current.artist}`
+      : `หมดเวลา! ถูกต้อง +${points} คะแนน — เฉลย: "${current.title}" — ${current.artist}`;
     $("feedback").classList.add("success");
   } else if (finalAnswer === null) {
-    $("feedback").textContent = `หมดเวลา! ไม่ได้ตอบ — เฉลย: “${current.title}” — ${activeSong.artist}`;
+    streak = 0;
+    $("streakPill").hidden = true;
+    playWrongSound();
+    $("feedback").textContent = `หมดเวลา! ไม่ได้ตอบ — เฉลย: "${current.title}" — ${activeSong.artist}`;
     $("feedback").classList.add("error");
   } else {
-    $("feedback").textContent = `หมดเวลา! ตอบผิด — เฉลย: “${current.title}” — ${activeSong.artist}`;
+    streak = 0;
+    $("streakPill").hidden = true;
+    playWrongSound();
+    $("feedback").textContent = `หมดเวลา! ตอบผิด — เฉลย: "${current.title}" — ${activeSong.artist}`;
     $("feedback").classList.add("error");
   }
+
+  /* waveform off */
+  $("playBtn").classList.remove("playing");
 
   if (activeSong.trackUrl) {
     $("trackLink").href = activeSong.trackUrl;
@@ -1743,6 +1879,7 @@ function finishQuestion(answer) {
 function showResults() {
   clearInterval(timer);
   $("audio").pause();
+  $("playBtn").classList.remove("playing");
   $("game").hidden = true;
   $("results").hidden = false;
   $("finalStandings").hidden = true;
@@ -1753,6 +1890,47 @@ function showResults() {
   $("resultTitle").textContent = scoreRatio >= .7 ? "คุณคือตัวจริง! 🎉" : scoreRatio >= .4 ? "เก่งมากเลย! 🎧" : "ขอบคุณที่มาเล่น! 🎵";
   $("resultCopy").textContent = `ทำได้ดีมาก ${playerName}!`;
   $("resultDetail").textContent = `ตอบถูก ${correctAnswers} จาก ${gameSongs.length} ข้อ`;
+
+  /* confetti for good score */
+  if (scoreRatio >= 0.6) launchConfetti();
+
+  /* song history */
+  const historySection = $("songHistory");
+  const historyList = $("songHistoryList");
+  historyList.replaceChildren();
+  if (gameHistory.length > 0) {
+    gameHistory.forEach((entry, i) => {
+      const li = document.createElement("li");
+      const indexEl = document.createElement("span");
+      indexEl.className = "history-index";
+      indexEl.textContent = i + 1;
+      const resultEl = document.createElement("span");
+      resultEl.className = `history-result ${entry.isCorrect ? "correct" : "wrong"}`;
+      resultEl.textContent = entry.isCorrect ? "✓" : "✗";
+      const titleEl = document.createElement("span");
+      titleEl.className = "history-title";
+      titleEl.textContent = entry.song.title;
+      const artistEl = document.createElement("span");
+      artistEl.className = "history-artist";
+      artistEl.textContent = entry.song.artist;
+      const pointsEl = document.createElement("span");
+      pointsEl.className = "history-points";
+      pointsEl.textContent = entry.isCorrect ? `+${entry.points}` : "0";
+      li.append(indexEl, resultEl, titleEl, artistEl, pointsEl);
+      if (entry.song.trackUrl) {
+        const link = document.createElement("a");
+        link.href = entry.song.trackUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = "↗";
+        li.appendChild(link);
+      }
+      historyList.appendChild(li);
+    });
+    historySection.hidden = false;
+  } else {
+    historySection.hidden = true;
+  }
 }
 
 function stopGameForSettings() {
@@ -2037,5 +2215,62 @@ window.songTriviaCatalog = {
   refresh: refreshMusicCatalog,
   loadArtists: loadArtistChoices
 };
+
+/* ─── Keyboard shortcuts A/B/C/D ─── */
+document.addEventListener("keydown", (event) => {
+  if ($("game").hidden) return;
+  if (answered || !timerStarted) return;
+  const key = event.key.toUpperCase();
+  if (!["A","B","C","D"].includes(key)) return;
+  const buttons = [...document.querySelectorAll(".answer-button:not(:disabled)")];
+  const index = key.charCodeAt(0) - 65;
+  if (buttons[index]) buttons[index].click();
+});
+
+/* ─── Page Visibility API – pause timer when tab hidden ─── */
+document.addEventListener("visibilitychange", () => {
+  if (!timerStarted || answered) return;
+  if (document.hidden) {
+    /* tab hidden – pause */
+    clearInterval(timer);
+    timerPausedElapsed += performance.now() - questionStartedAt;
+    timerPausedAt = performance.now();
+  } else {
+    /* tab visible – resume */
+    questionStartedAt = performance.now();
+    timer = setInterval(() => {
+      const elapsed = timerPausedElapsed + (performance.now() - questionStartedAt);
+      const remaining = Math.max(0, questionTime * 1000 - elapsed);
+      seconds = Math.ceil(remaining / 1000);
+      $("timer").textContent = seconds;
+      $("timerFill").style.width = `${(remaining / (questionTime * 1000)) * 100}%`;
+      if (seconds <= 5) $("timerFill").classList.add("low");
+      if (remaining <= 0) {
+        clearInterval(timer);
+        $("audio").pause();
+        finishQuestion(null);
+      }
+    }, 100);
+  }
+});
+
+/* ─── Share score button ─── */
+$("shareScoreBtn").addEventListener("click", () => {
+  const total = gameSongs.length * 100;
+  const text = `ฉันได้ ${score}/${total} คะแนน (ตอบถูก ${correctAnswers}/${gameSongs.length} ข้อ) ใน เทงพลาย! ลองเล่นดูที่ https://tune-battle-pages.pages.dev/`;
+  if (navigator.share) {
+    navigator.share({ title: "เทงพลาย", text }).catch(() => {});
+  } else {
+    navigator.clipboard.writeText(text).then(
+      () => showToast("✓ คัดลอกแล้ว! ไปแปะในแชทได้เลย"),
+      () => showToast("คัดลอกไม่สำเร็จ")
+    );
+  }
+});
+
+/* ─── Waveform: also toggle on audio events ─── */
+$("audio").addEventListener("play",  () => { if (timerStarted) $("playBtn").classList.add("playing"); });
+$("audio").addEventListener("pause", () => $("playBtn").classList.remove("playing"));
+$("audio").addEventListener("ended", () => $("playBtn").classList.remove("playing"));
 
 updateSettings();

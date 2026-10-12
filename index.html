@@ -22,6 +22,9 @@
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=Noto+Sans+Thai:wght@400;500;700;800;900&display=swap">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
@@ -81,6 +84,12 @@
               <select id="avatarSelect" aria-label="เลือกอวาตาร์">
                 <option value="🎧">🎧</option><option value="🦊">🦊</option><option value="🐼">🐼</option>
                 <option value="🐸">🐸</option><option value="🐱">🐱</option><option value="🐯">🐯</option>
+                <option value="🦁">🦁</option><option value="🐻">🐻</option><option value="🐨">🐨</option>
+                <option value="🦄">🦄</option><option value="🐺">🐺</option><option value="🦋">🦋</option>
+                <option value="🐙">🐙</option><option value="🦖">🦖</option><option value="🐳">🐳</option>
+                <option value="🎵">🎵</option><option value="🎸">🎸</option><option value="🎹">🎹</option>
+                <option value="🎤">🎤</option><option value="🎺">🎺</option><option value="🥁">🥁</option>
+                <option value="🌟">🌟</option><option value="🔥">🔥</option><option value="💎">💎</option>
               </select>
             </label>
             <label class="profile-name-field"><span>เลือกอวาตาร์และชื่อเล่น</span><input id="partyName" maxlength="20" placeholder="เช่น MusicFan" required></label>
@@ -313,6 +322,7 @@
           <p class="question-count" id="round">ข้อที่ 1 <span>/ 10</span></p>
         </div>
         <div class="score-pill"><span aria-hidden="true">✦</span> <span id="score">0</span><small>PTS</small></div>
+        <div class="streak-pill" id="streakPill" hidden><span class="streak-fire">🔥</span><span id="streakCount">0</span><small>STREAK</small></div>
       </div>
 
       <div class="progress-track" role="progressbar" aria-label="ความคืบหน้า" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
@@ -326,6 +336,9 @@
         <button id="playBtn" class="listen-button" type="button" disabled>
           <span class="listen-icon" aria-hidden="true">▶</span>
           <span id="playLabel">กำลังเตรียมเพลง...</span>
+          <span class="waveform-bars" id="waveformBars" aria-hidden="true">
+            <span></span><span></span><span></span><span></span><span></span>
+          </span>
         </button>
         <div class="volume-controls" role="group" aria-label="ปรับระดับเสียง">
           <button id="volumeDownBtn" class="volume-button" type="button" aria-label="ลดเสียง">−</button>
@@ -361,6 +374,10 @@
       <p class="result-copy" id="resultCopy"></p>
       <div class="final-score"><span id="finalScore">0</span><small>คะแนน</small></div>
       <p class="result-detail" id="resultDetail"></p>
+      <div class="result-actions">
+        <button id="restartBtn" class="primary-button" type="button">เล่นอีกครั้ง <span aria-hidden="true">↻</span></button>
+        <button id="shareScoreBtn" class="secondary-button" type="button">แชร์คะแนน <span aria-hidden="true">↗</span></button>
+      </div>
       <section id="finalStandings" class="final-standings" aria-live="polite" hidden>
         <h2>ตารางเปรียบเทียบคะแนน</h2>
         <div class="standings-table-wrap">
@@ -372,7 +389,10 @@
           </table>
         </div>
       </section>
-      <button id="restartBtn" class="primary-button" type="button">เล่นอีกครั้ง <span aria-hidden="true">↻</span></button>
+      <section id="songHistory" class="song-history" hidden>
+        <h2>เพลงที่เล่นไปแล้ว</h2>
+        <ul id="songHistoryList"></ul>
+      </section>
     </section>
 
     <footer class="footer-note">Made for music lovers <span aria-hidden="true">♥</span></footer>
