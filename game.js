@@ -1491,6 +1491,7 @@ function startGame() {
   $("game").hidden = false;
   $("playerGreeting").textContent = `เอาล่ะ ${playerName} ลุยกันเลย!`;
   $("timer").textContent = questionTime;
+  primeAudioPlayback();
   showQuestion();
 }
 
@@ -1504,6 +1505,32 @@ let currentVolume = 0.5;
 const volumeStep = 0.1;
 let audioGainNode = null;
 let mediaSourceConnected = false;
+let audioUnlocked = false;
+
+function primeAudioPlayback() {
+  if (audioUnlocked) return;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+  } catch (_) {}
+
+  const audio = $("audio");
+  if (audio) {
+    try {
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          audio.pause();
+          audioUnlocked = true;
+        }).catch(() => {});
+      }
+    } catch (_) {}
+  }
+}
+window.addEventListener("pointerdown", primeAudioPlayback, { passive: true });
+window.addEventListener("keydown", primeAudioPlayback, { passive: true });
 
 function ensureAudioGainNode() {
   if (mediaSourceConnected) return;
@@ -1692,11 +1719,11 @@ function setPreview(song, result, provider) {
   };
   audio.src = activeSong.previewUrl;
   audio.load();
-  $("playLabel").textContent = "กำลังเริ่มเพลง...";
+  $("playLabel").textContent = "กำลังเริ่มเล่นเพลง...";
   $("playBtn").disabled = false;
   $("feedback").textContent = window.songTriviaParty?.active
     ? "เพลงพร้อมแล้ว กำลังรอเพื่อนๆ..."
-    : "เพลงพร้อมแล้ว กำลังเริ่มเล่นอัตโนมัติ...";
+    : "เพลงพร้อมแล้ว เพลงจะเล่นอัตโนมัติ...";
   $("feedback").className = "feedback";
   if (window.songTriviaParty?.active) {
     window.songTriviaParty.previewReady();
@@ -1760,10 +1787,15 @@ async function loadDeezerFallback(song, requestId = previewRequestId) {
     $("timer").textContent = seconds;
     $("timerFill").style.width = "100%";
     setAnswerButtonsEnabled(false);
-    $("playLabel").textContent = "ลองโหลดเพลงอีกครั้ง";
-    $("playBtn").disabled = false;
-    $("feedback").textContent = "โหลดเพลงไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วกดลองใหม่อีกครั้ง";
+    $("playLabel").textContent = "ข้ามไปยังข้อถัดไป...";
+    $("playBtn").disabled = true;
+    $("feedback").textContent = "โหลดเพลงไม่สำเร็จ กำลังข้ามไปยังข้อถัดไป...";
     $("feedback").className = "feedback error";
+    setTimeout(() => {
+      if (requestId === previewRequestId && !answered) {
+        finishQuestion(null);
+      }
+    }, 2000);
   }
 }
 
@@ -1773,7 +1805,7 @@ function beginTimer() {
   questionStartedAt = performance.now();
   timerPausedElapsed = 0;
   setAnswerButtonsEnabled(true);
-  $("playLabel").textContent = "ฟังซ้ำ";
+  $("playLabel").textContent = "กำลังเล่นเพลง...";
   $("feedback").textContent = "เลือกชื่อเพลงให้ถูกก่อนหมดเวลา!";
   /* waveform */
   $("playBtn").classList.add("playing");
@@ -1816,15 +1848,13 @@ async function playPreview() {
     beginTimer();
   } catch (error) {
     if (error.name === "AbortError" && !activeSong) return;
-    if (error.name === "NotAllowedError") {
-      $("playLabel").textContent = "แตะเพื่อเริ่มฟัง";
-      $("feedback").textContent = "เบราว์เซอร์บล็อกการเล่นอัตโนมัติ แตะปุ่มเพื่อเริ่มเพลงและจับเวลา";
-      $("feedback").className = "feedback";
-      return;
-    }
-    console.error("Unable to play the song preview:", error);
-    $("feedback").textContent = "เล่นเพลงไม่ได้ ลองแตะปุ่มเพื่อเริ่มฟังอีกครั้ง";
-    $("feedback").className = "feedback error";
+    console.warn("Autoplay attempt failed:", error);
+    beginTimer();
+    const resumeAutoplay = () => {
+      audio.play().catch(() => {});
+    };
+    document.addEventListener("pointerdown", resumeAutoplay, { once: true, passive: true });
+    document.addEventListener("keydown", resumeAutoplay, { once: true, passive: true });
   }
 }
 
@@ -2212,7 +2242,6 @@ $("artistOptions").addEventListener("change", handleSourceFilterChange);
 $("decadeOptions").addEventListener("change", handleCatalogFilterChange);
 $("playlistOptions").addEventListener("change", handleSourceFilterChange);
 $("retryCatalogButton").addEventListener("click", refreshMusicCatalog);
-$("playBtn").addEventListener("click", playPreview);
 try { $("audio").volume = currentVolume; } catch (_) {}
 updateVolumeControls();
 $("volumeDownBtn").addEventListener("click", () => changeVolume(-volumeStep));
@@ -2224,7 +2253,7 @@ $("audio").addEventListener("timeupdate", () => {
 });
 $("audio").addEventListener("pause", () => {
   if (!answered && timerStarted && activeSong) {
-    $("playLabel").textContent = "ฟังซ้ำ";
+    $("playLabel").textContent = "กำลังเล่นเพลง...";
   }
 });
 $("audio").addEventListener("error", () => {
@@ -2241,10 +2270,13 @@ $("audio").addEventListener("error", () => {
       $("timer").textContent = seconds;
       $("timerFill").style.width = "100%";
       setAnswerButtonsEnabled(false);
-      $("feedback").textContent = "เล่นเพลงไม่ได้ ลองกดปุ่มเพื่อโหลดเพลงอีกครั้ง";
+      $("feedback").textContent = "เล่นเพลงไม่ได้ กำลังข้ามไปยังข้อถัดไป...";
       $("feedback").className = "feedback error";
-      $("playLabel").textContent = "ลองโหลดเพลงอีกครั้ง";
-      $("playBtn").disabled = false;
+      $("playLabel").textContent = "ข้ามไปยังข้อถัดไป...";
+      $("playBtn").disabled = true;
+      setTimeout(() => {
+        if (!answered) finishQuestion(null);
+      }, 2000);
     }
   }
 });

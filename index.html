@@ -379,20 +379,19 @@
         <div class="question-icon" aria-hidden="true"><span>♫</span></div>
         <p class="question-label" id="questionLabel">ฟังเพลงที่เล่นอัตโนมัติ แล้วตอบให้ไวที่สุด</p>
         <h1 id="questionText">เพลงนี้ชื่ออะไร?</h1>
-        <button id="playBtn" class="listen-button" type="button" disabled>
-          <span class="listen-icon" aria-hidden="true">▶</span>
-          <span id="playLabel">กำลังเตรียมเพลง...</span>
-          <span class="waveform-bars" id="waveformBars" aria-hidden="true">
+        <div id="playBtn" class="music-status-card" role="status" aria-live="polite">
+          <div class="waveform-bars" id="waveformBars" aria-hidden="true">
             <span></span><span></span><span></span><span></span><span></span>
-          </span>
-        </button>
+          </div>
+          <span id="playLabel">กำลังเตรียมเพลง...</span>
+        </div>
         <div class="volume-controls" role="group" aria-label="ปรับระดับเสียง">
           <button id="volumeDownBtn" class="volume-button" type="button" aria-label="ลดเสียง">−</button>
           <span id="volumeLevel" class="volume-level" aria-live="polite">50%</span>
           <button id="volumeUpBtn" class="volume-button" type="button" aria-label="เพิ่มเสียง">+</button>
         </div>
-        <p class="preview-note">เล่นตัวอย่างเพลงตามเวลาที่ตั้งไว้</p>
-        <audio id="audio" preload="none" crossorigin="anonymous"></audio>
+        <p class="preview-note">เพลงเล่นอัตโนมัติ ตอบให้ถูกก่อนหมดเวลา</p>
+        <audio id="audio" preload="auto" crossorigin="anonymous"></audio>
         <div class="timer-row">
           <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
           <p class="timer" aria-live="polite"><span id="timer">10</span><small>วินาที</small></p>

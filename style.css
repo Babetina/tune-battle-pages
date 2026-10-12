@@ -951,32 +951,44 @@ button {
   line-height: 1.5;
 }
 
+.music-status-card,
 .listen-button {
-  min-height: 48px;
-  width: 100%;
-  margin-top: 18px;
-  display: flex;
+  min-height: 42px;
+  width: fit-content;
+  max-width: 90%;
+  margin: 16px auto 0;
+  padding: 8px 22px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  border: 1px solid rgba(197, 170, 255, .34);
-  border-radius: 12px;
-  background: rgba(168, 138, 255, .11);
-  color: #d5c4ff;
+  gap: 12px;
+  border: 1px solid rgba(197, 170, 255, .25);
+  border-radius: 999px;
+  background: rgba(168, 138, 255, .08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #dcd0ff;
   font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background .2s, border-color .2s;
+  font-weight: 600;
+  letter-spacing: .2px;
+  cursor: default;
+  user-select: none;
+  pointer-events: none;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .2);
+  transition: all .3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.listen-button:hover:not(:disabled) {
-  border-color: rgba(197, 170, 255, .7);
-  background: rgba(168, 138, 255, .2);
+.music-status-card.playing,
+.listen-button.playing {
+  border-color: rgba(197, 170, 255, .55);
+  background: rgba(168, 138, 255, .16);
+  color: #ffffff;
+  box-shadow: 0 0 24px rgba(168, 138, 255, .28), 0 4px 18px rgba(0, 0, 0, .25);
 }
 
+.music-status-card:disabled,
 .listen-button:disabled {
-  cursor: wait;
-  opacity: .65;
+  opacity: .85;
 }
 
 .volume-controls {
@@ -2959,15 +2971,11 @@ body {
   color: #d9b7f5;
 }
 
+.music-status-card,
 .listen-button {
-  border-color: rgba(185, 167, 255, .34);
-  background: rgba(185, 167, 255, .09);
+  border-color: rgba(185, 167, 255, .25);
+  background: rgba(185, 167, 255, .08);
   color: #d5caff;
-}
-
-.listen-button:hover:not(:disabled) {
-  border-color: #b9a7ff;
-  background: rgba(185, 167, 255, .16);
 }
 
 .answer-button {
@@ -3347,29 +3355,34 @@ select:focus-visible {
 
 /* ─── WAVEFORM BARS ─── */
 .waveform-bars {
-  display: none;
+  display: inline-flex;
   align-items: flex-end;
-  gap: 3px;
+  gap: 3.5px;
   height: 18px;
-  margin-left: 8px;
 }
 .waveform-bars span {
-  width: 3px;
+  width: 3.5px;
+  height: 5px;
   border-radius: 99px;
-  background: rgba(197, 170, 255, .85);
+  background: linear-gradient(180deg, #e4d8ff, #a980ff);
+  transition: height .2s ease;
 }
 
-@keyframes bar1 { 0%,100%{height:4px}  50%{height:16px} }
-@keyframes bar2 { 0%,100%{height:9px}  40%{height:5px} 80%{height:14px} }
-@keyframes bar3 { 0%,100%{height:14px} 35%{height:4px} 70%{height:11px} }
-@keyframes bar4 { 0%,100%{height:6px}  55%{height:15px} }
-@keyframes bar5 { 0%,100%{height:11px} 45%{height:5px} }
+@keyframes bar1 { 0%,100%{height:5px}  50%{height:18px} }
+@keyframes bar2 { 0%,100%{height:10px}  40%{height:6px} 80%{height:16px} }
+@keyframes bar3 { 0%,100%{height:16px} 35%{height:5px} 70%{height:13px} }
+@keyframes bar4 { 0%,100%{height:7px}  55%{height:17px} }
+@keyframes bar5 { 0%,100%{height:12px} 45%{height:6px} }
 
-.listen-button.playing .waveform-bars { display: flex; }
+.music-status-card.playing .waveform-bars span:nth-child(1),
 .listen-button.playing .waveform-bars span:nth-child(1) { animation: bar1 .80s ease-in-out infinite; }
+.music-status-card.playing .waveform-bars span:nth-child(2),
 .listen-button.playing .waveform-bars span:nth-child(2) { animation: bar2 .90s ease-in-out infinite .10s; }
+.music-status-card.playing .waveform-bars span:nth-child(3),
 .listen-button.playing .waveform-bars span:nth-child(3) { animation: bar3 .70s ease-in-out infinite .20s; }
+.music-status-card.playing .waveform-bars span:nth-child(4),
 .listen-button.playing .waveform-bars span:nth-child(4) { animation: bar4 1.00s ease-in-out infinite .05s; }
+.music-status-card.playing .waveform-bars span:nth-child(5),
 .listen-button.playing .waveform-bars span:nth-child(5) { animation: bar5 .85s ease-in-out infinite .15s; }
 
 /* ─── STREAK PILL ─── */
@@ -3520,6 +3533,7 @@ select:focus-visible {
   .party-hero-art > span,
   .party-hero-art > b,
   .party-hero-art > i,
+  .music-status-card.playing .waveform-bars span,
   .listen-button.playing .waveform-bars span,
   .streak-pill.pop,
   .streak-pill.hot .streak-fire,
