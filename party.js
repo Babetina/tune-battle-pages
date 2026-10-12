@@ -128,6 +128,15 @@
     return supabaseClient;
   }
 
+  function prewarmSupabase() {
+    try {
+      const client = getClient();
+      if (client?.realtime && typeof client.realtime.connect === "function") {
+        client.realtime.connect();
+      }
+    } catch (_) { }
+  }
+
   function setMessage(id, message, error = false) {
     const element = $(id);
     element.textContent = message;
@@ -289,7 +298,7 @@
       7000,
       party.roundStartedAt
         ? window.songTriviaPartyGame.getQuestionTime() * 1000 -
-          (performance.now() - party.roundStartedAt)
+        (performance.now() - party.roundStartedAt)
         : 0
     ));
   }
@@ -518,7 +527,7 @@
 
     // Remove any previously active channel from Supabase client to prevent duplicate/stale subscriptions
     if (party.channel) {
-      try { await client.removeChannel(party.channel); } catch (_) {}
+      try { await client.removeChannel(party.channel); } catch (_) { }
       party.channel = null;
     }
     try {
@@ -526,7 +535,7 @@
       if (existing) {
         await client.removeChannel(existing);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     const channel = client.channel(`songtrivia-room-${roomCode}`, {
       config: {
@@ -570,7 +579,7 @@
     channel.on("presence", { event: "join" }, onPresenceUpdate);
 
     await new Promise((resolve, reject) => {
-      const timeout = window.setTimeout(() => reject(new Error("เชื่อมต่อห้องไม่ทันเวลา ลองใหม่อีกครั้ง")), 10000);
+      const timeout = window.setTimeout(() => reject(new Error("เชื่อมต่อห้องไม่ทันเวลา ลองใหม่อีกครั้ง")), 8000);
       channel.subscribe(status => {
         if (status === "SUBSCRIBED") {
           clearTimeout(timeout);
@@ -582,14 +591,25 @@
       });
     });
 
-    const trackStatus = await channel.track({
+    // Track player presence asynchronously with retry so cold-start timeouts never block entering the room
+    channel.track({
       id: party.playerId,
       name: party.name,
       avatar: party.avatar,
       host: isHost,
       joinedAt: Date.now()
-    });
-    if (trackStatus !== "ok") throw new Error(`เข้าห้องไม่สำเร็จ (${trackStatus})`);
+    }).then(status => {
+      if (status !== "ok") {
+        console.warn("Initial presence track status:", status);
+        channel.track({
+          id: party.playerId,
+          name: party.name,
+          avatar: party.avatar,
+          host: isHost,
+          joinedAt: Date.now()
+        }).catch(console.warn);
+      }
+    }).catch(console.warn);
 
     updateRoomLink();
     renderPlayers();
@@ -1209,6 +1229,7 @@
   });
 
   showHowTo();
+  prewarmSupabase();
   const inviteCode = new URLSearchParams(window.location.search).get("room");
   if (inviteCode) {
     const clean = extractRoomCode(inviteCode);

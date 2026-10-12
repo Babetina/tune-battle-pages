@@ -76,6 +76,7 @@ button {
   transform: scale(0.98);
 }
 
+.brand-mark-img,
 .brand-mark {
   width: 34px;
   height: 34px;
@@ -87,8 +88,10 @@ button {
   font-size: 21px;
   box-shadow: 0 4px 16px rgba(197, 184, 255, .32);
   transition: transform .2s ease, box-shadow .2s ease;
+  object-fit: cover;
 }
 
+.brand:hover .brand-mark-img,
 .brand:hover .brand-mark {
   transform: rotate(-6deg) scale(1.08);
   box-shadow: 0 6px 20px rgba(243, 169, 217, .45);
