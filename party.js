@@ -175,6 +175,7 @@
       const avatar = document.createElement("span");
       avatar.className = "player-avatar";
       avatar.textContent = player.avatar || "🎧";
+      avatar.setAttribute("aria-hidden", "true");
       const name = document.createElement("strong");
       name.textContent = player.name || "ผู้เล่น";
       const tag = document.createElement("small");

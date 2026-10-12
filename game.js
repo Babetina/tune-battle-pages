@@ -1405,7 +1405,9 @@ function showQuestion() {
 
   const progress = Math.round((questionIndex / gameSongs.length) * 100);
   $("progressFill").style.width = `${progress}%`;
-  document.querySelector(".progress-track").setAttribute("aria-valuenow", questionIndex);
+  const progressTrack = document.querySelector(".progress-track");
+  progressTrack.setAttribute("aria-valuemax", gameSongs.length);
+  progressTrack.setAttribute("aria-valuenow", questionIndex);
 
   const answers = $("answers");
   answers.replaceChildren();
@@ -1772,6 +1774,7 @@ window.songTriviaPartyGame = {
         identity.className = "party-score-player";
         const avatar = document.createElement("span");
         avatar.textContent = player.avatar || "🎧";
+        avatar.setAttribute("aria-hidden", "true");
         const name = document.createElement("strong");
         name.textContent = player.name || "ผู้เล่น";
         identity.append(avatar, name);
@@ -1806,6 +1809,7 @@ window.songTriviaPartyGame = {
       identity.className = "standings-player";
       const avatar = document.createElement("span");
       avatar.textContent = player.avatar || "🎧";
+      avatar.setAttribute("aria-hidden", "true");
       const name = document.createElement("span");
       name.textContent = player.name || "ผู้เล่น";
       identity.append(avatar, name);

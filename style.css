@@ -3207,3 +3207,51 @@ body {
     transition: none;
   }
 }
+
+.skip-link {
+  position: fixed;
+  z-index: 1000;
+  top: 12px;
+  left: 12px;
+  padding: 12px 16px;
+  transform: translateY(calc(-100% - 20px));
+  border: 2px solid #fff;
+  border-radius: 10px;
+  color: #171522;
+  background: #eeeaff;
+  font-weight: 700;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 3px solid #eeeaff;
+  outline-offset: 3px;
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid #eeeaff;
+  outline-offset: 3px;
+}
+
+.setup-help {
+  margin-top: 18px;
+  color: #d8d6e2;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.setup-help summary {
+  width: fit-content;
+  color: #d0c4ff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.setup-help p {
+  max-width: 48ch;
+  margin: 10px 0 0;
+}

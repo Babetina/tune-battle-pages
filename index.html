@@ -4,22 +4,31 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#11111b">
-  <title>เทงพลาย — เกมทายเพลง</title>
-  <meta name="description" content="เทงพลาย — เกมทายเพลงออนไลน์: ฟังคลิปสั้น ๆ แล้วทายชื่อเพลง แข่งกับเพื่อนหรือเล่นคนเดียว พร้อมตั้งค่าแนวเพลง ศิลปิน และจำนวนข้อ"> 
-  <!-- Open Graph / Social -->
-  <meta property="og:title" content="เทงพลาย — เกมทายเพลง">
-  <meta property="og:description" content="ฟังคลิปสั้น ๆ แล้วทายชื่อเพลง — เล่นคนเดียวหรือชวนเพื่อนแข่งออนไลน์">
+  <title>เทงพลาย — เกมทายเรื่องเพลง</title>
+  <meta name="description" content="ฟังคลิปเพลงแล้วทายชื่อเพลงให้ทันเวลา เลือกศิลปิน แนวเพลง หรือชวนเพื่อนมาเล่นแข่งกันแบบเรียลไทม์">
   <meta property="og:type" content="website">
-  <meta property="og:image" content="/favicon.svg">
-  <meta name="twitter:card" content="summary">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="manifest" href="/manifest.json">
+  <meta property="og:site_name" content="เทงพลาย">
+  <meta property="og:url" content="https://tune-battle-pages.pages.dev/">
+  <meta property="og:title" content="เทงพลาย — เกมทายเรื่องเพลง">
+  <meta property="og:description" content="ฟังคลิปเพลงแล้วทายชื่อเพลงให้ทันเวลา เล่นคนเดียวหรือชวนเพื่อนมาแข่งกัน">
+  <meta property="og:image" content="https://tune-battle-pages.pages.dev/social-card.png">
+  <meta property="og:image:alt" content="เทงพลาย เกมทายเพลง — ฟังแล้วทายให้ทันเวลา">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="เทงพลาย — เกมทายเรื่องเพลง">
+  <meta name="twitter:description" content="ฟังคลิปเพลงแล้วทายชื่อเพลงให้ทันเวลา เล่นคนเดียวหรือชวนเพื่อนมาแข่งกัน">
+  <meta name="twitter:image" content="https://tune-battle-pages.pages.dev/social-card.png">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
 </head>
 <body>
-  <a class="skip-link" href="#home">ข้ามไปยังเนื้อหา</a>
-  <main class="app-shell">
+  <a class="skip-link" href="#mainContent">ข้ามไปยังเนื้อหาหลัก</a>
+  <main class="app-shell" id="mainContent" tabindex="-1">
     <header class="topbar">
       <a class="brand" href="#" aria-label="เทงพลาย หน้าแรก">
         <span class="brand-mark" aria-hidden="true">♫</span>
@@ -36,13 +45,13 @@
       <div class="home-intro">
         <p class="eyebrow">ฟังคลิปเพลง แล้วทายให้ทันเวลา</p>
         <h1>Guess the Song:<br><span>The Free Song Guessing Game</span></h1>
-        <p>เล่นคนเดียวตามแนวเพลงที่ชอบ หรือชวนเพื่อนมาแข่งกันตอบเพลงเดียวกัน — ปรับแต่งเพลย์ลิสต์ตามศิลปิน ยุค และเวลา</p>
+        <p>เล่นคนเดียวตามแนวเพลงที่ชอบ หรือชวนเพื่อนมาแข่งกันตอบเพลงเดียวกันแบบเรียลไทม์</p>
       </div>
       <article class="party-hero">
         <div class="party-hero-copy">
           <p class="eyebrow">CHALLENGE YOUR FRIENDS</p>
           <h2>ทายเพลงแข่งกับเพื่อน</h2>
-          <p>สร้างห้อง ส่งลิงก์ให้เพื่อน แล้วทายเพลงเดียวกัน ใครตอบถูกและเร็วสุดชนะ</p>
+          <p>สร้างห้อง ส่งลิงก์ให้เพื่อน แล้วทายเพลงเดียวกัน ใครตอบถูกและเร็วจะได้คะแนนมากกว่า</p>
           <div class="hero-actions">
             <button class="primary-button" type="button" data-home-action="create">＋ สร้างห้อง</button>
             <button class="secondary-button" type="button" data-home-action="join">↪ เข้าร่วมห้อง</button>
@@ -51,19 +60,326 @@
         <div class="party-hero-art" aria-hidden="true"><span>♫</span><b>♪</b><i>♬</i></div>
       </article>
       <div class="solo-promo">
-        <div><p class="eyebrow">SOLO MODE</p><h2>อยากเล่นคนเดียว?</h2><p>เลือกแนวเพลง ศิลปิน ยุค หรือเพลย์ลิสต์ แล้วเริ่มทายเพลง</p>
+        <div><p class="eyebrow">SOLO MODE</p><h2>อยากเล่นคนเดียว?</h2><p>เลือกแนวเพลง ศิลปิน ยุค หรือเพลย์ลิสต์ที่ชอบ</p></div>
         <button class="secondary-button" type="button" data-home-action="solo">ตั้งค่าเกมคนเดียว <span aria-hidden="true">→</span></button>
       </div>
       <p class="backend-notice" id="backendNotice" role="status"></p>
     </section>
 
-    <!-- rest of the page unchanged -->
+    <section class="screen party-profile-screen" id="partyProfile" hidden>
+      <div class="party-page-heading">
+        <button class="icon-button" type="button" data-home-action="home" aria-label="กลับหน้าแรก">←</button>
+        <p class="eyebrow">CREATE A PARTY WITH FRIENDS</p>
+        <span class="private-badge">♟ ห้องส่วนตัว</span>
+      </div>
+      <div class="party-profile-grid">
+        <form class="profile-card" id="createPartyForm">
+          <p class="eyebrow yellow">โปรไฟล์ของฉัน</p>
+          <div class="profile-edit">
+            <label class="avatar-picker">
+              <span id="avatarPreview" aria-hidden="true">🎧</span>
+              <select id="avatarSelect" aria-label="เลือกอวาตาร์">
+                <option value="🎧">🎧</option><option value="🦊">🦊</option><option value="🐼">🐼</option>
+                <option value="🐸">🐸</option><option value="🐱">🐱</option><option value="🐯">🐯</option>
+              </select>
+            </label>
+            <label class="profile-name-field"><span>เลือกอวาตาร์และชื่อเล่น</span><input id="partyName" maxlength="20" placeholder="เช่น MusicFan" required></label>
+          </div>
+          <details class="setup-help">
+            <summary>สร้างห้องกับเพื่อนต้องเตรียมอะไรบ้าง?</summary>
+            <p>ผู้เล่นใส่ชื่อแล้วกดสร้างห้อง จากนั้นส่งรหัสห้องให้เพื่อน ส่วนผู้ดูแลเว็บต้องตั้งค่า Supabase URL และ publishable/anon key ในไฟล์ตั้งค่าก่อน ห้องออนไลน์จึงจะเชื่อมต่อได้</p>
+            <p>ใช้เฉพาะ publishable/anon key บนหน้าเว็บเท่านั้น ห้ามใส่ service_role key ในเว็บหรือใน repository</p>
+          </details>
+          <p class="backend-notice" id="partySetupMessage" role="status"></p>
+          <button class="primary-button" type="submit">▶ สร้างห้องของฉัน</button>
+        </form>
+        <section class="howto-card">
+          <p class="eyebrow">วิธีเล่น</p>
+          <div class="howto-visual" id="howtoVisual" aria-hidden="true"><span>●</span><b>🎙</b><span>●</span></div>
+          <h2 id="howtoTitle">1. สร้างห้องส่วนตัว</h2>
+          <p id="howtoText">ตั้งชื่อผู้เล่น แล้วสร้างห้องเพื่อรับรหัสเชิญเพื่อน</p>
+          <div class="howto-controls">
+            <button type="button" id="howtoPrevious" aria-label="ขั้นตอนก่อนหน้า">‹</button>
+            <div id="howtoDots" aria-hidden="true"></div>
+            <button type="button" id="howtoNext" aria-label="ขั้นตอนถัดไป">›</button>
+          </div>
+        </section>
+      </div>
+      <section class="modes-overview">
+        <p class="eyebrow yellow">โหมดเกมที่มีให้เลือก</p>
+        <div class="mode-overview-grid">
+          <article><span class="mode-icon yellow-icon">?</span><h3>ทายชื่อเพลง</h3><p>ฟังคลิปแล้วตอบแข่งกัน เก็บคะแนนให้ได้มากที่สุด</p></article>
+          <article class="mode-coming"><span class="mode-icon purple-icon">♫</span><h3>Music Chat <small>BETA</small></h3><p>คุยและส่งคำตอบในแชต</p></article>
+          <article class="mode-coming"><span class="mode-icon blue-icon">Aa</span><h3>Duo / Square / Cash</h3><p>ทายคำจากเบาะแสเพลง</p></article>
+          <article class="mode-coming"><span class="mode-icon teal-icon">♫</span><h3>Impossible Game</h3><p>ทายให้ไวที่สุด</p></article>
+        </div>
+      </section>
+    </section>
+
+    <section class="screen join-screen" id="joinParty" hidden>
+      <div class="party-page-heading">
+        <button class="icon-button" type="button" data-home-action="home" aria-label="กลับหน้าแรก">←</button>
+        <p class="eyebrow">เข้าร่วมห้องปาร์ตี้</p>
+      </div>
+      <form class="join-card" id="joinPartyForm">
+        <h1>พร้อมทายเพลงหรือยัง?</h1>
+        <label class="field-label" for="joinName">ชื่อเล่น</label>
+        <input id="joinName" maxlength="20" placeholder="ใส่ชื่อของคุณ" required>
+        <label class="field-label" for="joinCode">รหัสห้อง</label>
+        <input id="joinCode" maxlength="8" placeholder="เช่น A7K9Q2" autocomplete="off" required>
+        <p class="backend-notice" id="joinMessage" role="status"></p>
+        <button class="primary-button" type="submit">เข้าร่วมห้อง <span aria-hidden="true">→</span></button>
+      </form>
+    </section>
+
+    <section class="screen party-room-screen" id="partyRoom" hidden>
+      <div class="party-page-heading room-heading">
+        <div><p class="eyebrow">ห้องปาร์ตี้ • <span id="roomCodeLabel"></span></p><button class="text-button" id="leavePartyButton" type="button">← ออก/กลับเมนู</button></div>
+        <span class="private-badge">♟ ส่วนตัว</span>
+      </div>
+      <div class="room-layout">
+        <aside class="players-card">
+          <div class="section-heading"><p class="eyebrow yellow">ผู้เล่น <span id="playerCountLabel">0/100</span></p><span class="live-dot"></span></div>
+          <ul id="partyPlayers" class="party-player-list" aria-live="polite"></ul>
+        </aside>
+        <section class="room-config-card">
+          <div class="room-stepper"><span class="current">☷ ตั้งค่า</span><i>→</i><span>♫ เลือกเพลง</span><i>→</i><span>▶ เล่น</span></div>
+          <div class="room-tabs"><button type="button" class="active" id="presetTab">PRESETS</button><button type="button" id="customTab">CUSTOM</button></div>
+          <div class="room-mode-grid" id="roomModeGrid">
+            <button type="button" class="room-mode-card selected" data-room-mode="guess-song"><span class="mode-icon yellow-icon">?</span><b>GUESS THE SONG</b><small>ฟังคลิปเพลงและตอบให้ไวที่สุด</small></button>
+            <button type="button" class="room-mode-card unavailable"><span class="mode-icon purple-icon">♫</span><b>MUSIC CHAT</b><small>ยังไม่เปิดให้เล่น</small></button>
+            <button type="button" class="room-mode-card unavailable"><span class="mode-icon blue-icon">Aa</span><b>WORDZIC</b><small>COMING SOON</small></button>
+            <button type="button" class="room-mode-card unavailable"><span class="mode-icon orange-icon">▤</span><b>DUO, SQUARE, CASH</b><small>COMING SOON</small></button>
+          </div>
+          <div class="room-custom-options" id="roomCustomOptions" hidden>
+            <div class="custom-settings-heading">
+              <p>GUESS THE SONG SETTINGS</p>
+              <small>ปรับกติกาก่อนเลือกเพลง</small>
+            </div>
+            <div class="custom-setting-row">
+              <span class="custom-setting-icon" aria-hidden="true">🏆</span>
+              <span class="custom-setting-copy"><strong>เงื่อนไขผู้ชนะ</strong><small>ใช้จัดอันดับเมื่อจบเกม</small></span>
+              <select id="partyWinCondition" aria-label="เงื่อนไขผู้ชนะ">
+                <option value="points" selected>คะแนนรวม</option>
+                <option value="correct">จำนวนตอบถูก</option>
+              </select>
+            </div>
+            <div class="custom-setting-row">
+              <span class="custom-setting-icon" aria-hidden="true">⟳</span>
+              <span class="custom-setting-copy"><strong>จำนวนข้อ</strong><small>จำนวนเพลงทั้งหมดในเกม</small></span>
+              <select id="partyRounds" aria-label="จำนวนข้อ">
+                <option value="5">5 ข้อ</option><option value="10" selected>10 ข้อ</option>
+                <option value="15">15 ข้อ</option><option value="20">20 ข้อ</option><option value="30">30 ข้อ</option>
+              </select>
+            </div>
+            <div class="custom-setting-row">
+              <span class="custom-setting-icon" aria-hidden="true">◷</span>
+              <span class="custom-setting-copy"><strong>เวลาตอบ</strong><small>เวลาที่มีต่อคำถาม</small></span>
+              <select id="partyTime" aria-label="เวลาตอบ">
+                <option value="5">5 วินาที</option><option value="10" selected>10 วินาที</option>
+                <option value="15">15 วินาที</option><option value="20">20 วินาที</option><option value="30">30 วินาที</option>
+              </select>
+            </div>
+            <div class="custom-setting-row">
+              <span class="custom-setting-icon" aria-hidden="true">◉</span>
+              <span class="custom-setting-copy"><strong>แสดงคำตอบผู้เล่น</strong><small>เห็นคำตอบของคนอื่นระหว่างรอบ</small></span>
+              <div class="setting-toggle" role="group" aria-label="แสดงคำตอบผู้เล่น">
+                <button type="button" data-setting="liveAnswers" data-value="false" aria-pressed="false">ซ่อน</button>
+                <button type="button" data-setting="liveAnswers" data-value="true" aria-pressed="true">แสดง</button>
+              </div>
+            </div>
+            <div class="custom-setting-row">
+              <span class="custom-setting-icon" aria-hidden="true">↪</span>
+              <span class="custom-setting-copy"><strong>เข้าร่วมห้องระหว่างเกม</strong><small>ผู้เล่นใหม่เริ่มเล่นรอบถัดไป</small></span>
+              <div class="setting-toggle" role="group" aria-label="เข้าร่วมห้องระหว่างเกม">
+                <button type="button" data-setting="lateJoin" data-value="false" aria-pressed="true">ปิด</button>
+                <button type="button" data-setting="lateJoin" data-value="true" aria-pressed="false">เปิด</button>
+              </div>
+            </div>
+            <p class="field-hint">เลือกเพลงและศิลปินได้ในหน้าถัดไป</p>
+          </div>
+          <div class="room-actions">
+            <button type="button" class="secondary-button" id="inviteButton">⛓ เชิญเพื่อน</button>
+            <button type="button" class="secondary-button" id="copyRoomButton">▦ คัดลอกรหัส</button>
+            <button type="button" class="primary-button" id="roomNextButton">▶ ต่อไป</button>
+          </div>
+          <p class="backend-notice" id="roomMessage" role="status"></p>
+        </section>
+      </div>
+    </section>
+
+    <section class="screen settings-screen" id="lobby" hidden>
+      <button class="secondary-button party-return-button" id="returnPartyButton" type="button" hidden>← กลับไปห้องปาร์ตี้</button>
+      <div class="settings-heading">
+        <div class="settings-icon" aria-hidden="true">♫</div>
+        <div>
+          <p class="eyebrow">ตั้งค่าเกมของคุณ</p>
+          <h1>จัดเพลงให้ตรง<br><span>สไตล์ที่ชอบ</span></h1>
+          <p class="intro">เลือกเพลงฮิต แนวเพลง ศิลปิน และยุคที่อยากฟัง แล้วเริ่มทายกันเลย</p>
+        </div>
+      </div>
+
+      <form id="startForm" class="settings-card">
+        <div class="configuration-row">
+          <label class="player-name-field">
+            <span class="field-label">ชื่อผู้เล่น</span>
+            <input id="playerName" name="playerName" type="text" maxlength="20" placeholder="ใส่ชื่อของคุณ" autocomplete="nickname" required>
+          </label>
+          <span class="configuration-step"><span>1</span> ตั้งค่าเกม <i>→</i> <strong>2 เลือกเพลง</strong> <i>→</i> 3 เล่น</span>
+        </div>
+
+        <label class="search-field">
+          <span aria-hidden="true">⌕</span>
+          <input id="musicSearch" type="search" placeholder="ค้นหาเพลย์ลิสต์ ศิลปิน หรือเพลง..." autocomplete="off">
+          <kbd>⌕</kbd>
+        </label>
+        <p id="searchResults" class="search-results" aria-live="polite"></p>
+
+        <fieldset class="settings-section filter-section">
+          <legend class="field-label">แนวเพลง <span class="optional-label">เลือกได้ 1 แนว</span></legend>
+          <div id="genreOptions" class="genre-options"></div>
+        </fieldset>
+
+        <fieldset class="settings-section browse-section">
+          <legend class="sr-only">ศิลปิน</legend>
+          <div class="section-heading">
+            <span class="field-label">ศิลปิน <span class="optional-label">เลือกได้ 1 ศิลปิน</span></span>
+            <span id="artistCount" class="section-count"></span>
+          </div>
+          <div id="artistOptions" class="artist-options"></div>
+        </fieldset>
+
+        <details class="settings-section browse-section era-playlist-section" open>
+          <summary class="era-playlist-summary">
+            <span class="field-label">ยุคเพลงและเพลย์ลิสต์ <span class="optional-label">เลือกเพิ่มเติมตามเพลงที่กรอง</span></span>
+            <span id="eraPlaylistSummary" class="section-count"></span>
+          </summary>
+          <div class="era-playlist-content">
+            <div class="era-playlist-group">
+              <div class="section-heading">
+                <span class="field-label">ยุคเพลง <span class="optional-label">เลือกได้หลายยุค</span></span>
+                <span id="decadeCount" class="section-count"></span>
+              </div>
+              <div id="decadeOptions" class="decade-options"></div>
+            </div>
+            <div class="era-playlist-group">
+              <div class="section-heading">
+                <span class="field-label">เพลย์ลิสต์ <span class="optional-label">เลือกได้ 1 เพลย์ลิสต์</span></span>
+                <span id="playlistCount" class="section-count"></span>
+              </div>
+              <div id="playlistOptions" class="playlist-options"></div>
+            </div>
+          </div>
+        </details>
+
+        <div class="settings-section settings-grid">
+          <div class="field-group">
+            <label class="field-label" for="questionTimeSelect">เวลาต่อข้อ</label>
+            <select id="questionTimeSelect" name="questionTime">
+              <option value="5">5 วินาที</option>
+              <option value="10" selected>10 วินาที</option>
+              <option value="15">15 วินาที</option>
+              <option value="20">20 วินาที</option>
+              <option value="30">30 วินาที</option>
+            </select>
+            <p class="field-hint">คะแนนเต็ม 100 ลดลงตามเวลาที่ใช้</p>
+          </div>
+          <div class="field-group">
+            <label class="field-label" for="roundCountSelect">จำนวนข้อ</label>
+            <select id="roundCountSelect" name="roundCount">
+              <option value="5">5 เพลง</option>
+              <option value="10" selected>10 เพลง</option>
+              <option value="15">15 เพลง</option>
+              <option value="20">20 เพลง</option>
+              <option value="30">30 เพลง</option>
+            </select>
+            <p class="field-hint" id="poolNotice" role="status" aria-live="polite" aria-atomic="true">กำลังรอโหลดคลังเพลง Deezer...</p>
+            <button id="retryCatalogButton" class="text-button retry-catalog-button" type="button" hidden>ลองโหลดเพลงอีกครั้ง</button>
+          </div>
+        </div>
+
+        <div class="settings-footer">
+          <p id="settingsSummary" class="settings-summary">10 เพลง <span>•</span> 10 วินาที / ข้อ <span>•</span> สูงสุด 1,000 คะแนน</p>
+          <button id="startButton" class="primary-button" type="submit">เริ่มเล่น <span aria-hidden="true">→</span></button>
+        </div>
+      </form>
+    </section>
+
+    <section class="screen quiz-screen" id="game" hidden>
+      <button id="gameSettingsButton" class="secondary-button game-settings-button" type="button">← กลับไปตั้งค่า</button>
+      <div class="quiz-header">
+        <div>
+          <p class="eyebrow" id="playerGreeting">พร้อมหรือยัง?</p>
+          <p class="question-count" id="round">ข้อที่ 1 <span>/ 10</span></p>
+        </div>
+        <div class="score-pill"><span aria-hidden="true">✦</span> <span id="score">0</span><small>PTS</small></div>
+      </div>
+
+      <div class="progress-track" role="progressbar" aria-label="ความคืบหน้า" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+
+      <article class="question-card">
+        <div class="question-icon" aria-hidden="true"><span>♫</span></div>
+        <p class="question-label" id="questionLabel">ฟังเพลงที่เล่นอัตโนมัติ แล้วตอบให้ไวที่สุด</p>
+        <h1 id="questionText">เพลงนี้ชื่ออะไร?</h1>
+        <button id="playBtn" class="listen-button" type="button" disabled>
+          <span class="listen-icon" aria-hidden="true">▶</span>
+          <span id="playLabel">กำลังเตรียมเพลง...</span>
+        </button>
+        <div class="volume-controls" role="group" aria-label="ปรับระดับเสียง">
+          <button id="volumeDownBtn" class="volume-button" type="button" aria-label="ลดเสียง">−</button>
+          <span id="volumeLevel" class="volume-level" aria-live="polite">70%</span>
+          <button id="volumeUpBtn" class="volume-button" type="button" aria-label="เพิ่มเสียง">+</button>
+        </div>
+        <p class="preview-note">คลิป Deezer เล่นตามเวลาที่ตั้งไว้</p>
+        <audio id="audio" preload="none"></audio>
+        <div class="timer-row">
+          <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
+          <p class="timer" aria-live="polite"><span id="timer">10</span><small>วินาที</small></p>
+        </div>
+      </article>
+
+      <div id="answers" class="answer-grid" role="group" aria-label="ตัวเลือกคำตอบ"></div>
+      <section id="liveAnswersPanel" class="live-answers-panel" aria-live="polite" hidden>
+        <h2>คำตอบของผู้เล่น</h2>
+        <ul id="liveAnswersList"></ul>
+      </section>
+      <p id="feedback" class="feedback" aria-live="polite"></p>
+      <section id="partyScoreboard" class="party-scoreboard" aria-live="polite" hidden>
+        <h2>คะแนนรอบนี้</h2>
+        <ol id="partyScoreList"></ol>
+      </section>
+      <a id="trackLink" class="track-link" target="_blank" rel="noopener noreferrer" hidden>เปิดเพลงใน Apple Music ↗</a>
+      <button id="nextBtn" class="primary-button next-button" type="button" hidden>ข้อต่อไป <span aria-hidden="true">→</span></button>
+    </section>
+
+    <section class="screen result-screen" id="results" hidden>
+      <div class="result-icon" aria-hidden="true">♫</div>
+      <p class="eyebrow">จบเกมแล้ว!</p>
+      <h1 id="resultTitle">เยี่ยมมาก!</h1>
+      <p class="result-copy" id="resultCopy"></p>
+      <div class="final-score"><span id="finalScore">0</span><small>คะแนน</small></div>
+      <p class="result-detail" id="resultDetail"></p>
+      <section id="finalStandings" class="final-standings" aria-live="polite" hidden>
+        <h2>ตารางเปรียบเทียบคะแนน</h2>
+        <div class="standings-table-wrap">
+          <table>
+            <thead>
+              <tr><th scope="col">อันดับ</th><th scope="col">ผู้เล่น</th><th scope="col">คะแนน</th><th scope="col">ตอบถูก</th></tr>
+            </thead>
+            <tbody id="finalStandingsList"></tbody>
+          </table>
+        </div>
+      </section>
+      <button id="restartBtn" class="primary-button" type="button">เล่นอีกครั้ง <span aria-hidden="true">↻</span></button>
+    </section>
 
     <footer class="footer-note">Made for music lovers <span aria-hidden="true">♥</span></footer>
   </main>
 
-  <script src="supabase-config.js"></script>
-  <script src="game.js"></script>
-  <script src="party.js"></script>
+  <script src="supabase-config.js" defer></script>
+  <script src="game.js" defer></script>
+  <script src="party.js" defer></script>
 </body>
 </html>
