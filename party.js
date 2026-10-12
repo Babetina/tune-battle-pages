@@ -2,9 +2,9 @@
   const $ = id => document.getElementById(id);
   const screens = ["home", "partyProfile", "joinParty", "partyRoom", "lobby", "game", "results"];
   const howToSteps = [
-    ["1. สร้างห้องส่วนตัว", "ตั้งชื่อผู้เล่น แล้วสร้างห้องเพื่อรับรหัสเชิญเพื่อน"],
-    ["2. ชวนเพื่อนเข้าห้อง", "ส่งลิงก์หรือรหัสห้องให้เพื่อน แล้วรอให้ทุกคนเข้ามา"],
-    ["3. เริ่มทายเพลง", "ตอบให้เร็วเพื่อรับคะแนนมากขึ้น แล้วรอทุกคนตอบก่อนดูเฉลยและคะแนน"]
+    ["1. สร้างห้องส่วนตัว", "ตั้งชื่อของคุณ แล้วกดสร้างห้องเพื่อรับรหัสชวนเพื่อน"],
+    ["2. ชวนเพื่อนเข้าห้อง", "ส่งลิงก์หรือรหัสห้องให้เพื่อนเข้ามารวมตัวกัน"],
+    ["3. เริ่มทายเพลง", "ฟังเพลงแล้วตอบให้ไว ยิ่งตอบเร็วยิ่งได้คะแนนเยอะ!"]
   ];
   const party = {
     active: false,
@@ -783,7 +783,7 @@
       party.winner = null;
       party.finalRank = null;
       party.finalStandings = null;
-      $("questionLabel").textContent = "ฟังคลิปเดียวกัน แล้วตอบแข่งกับเพื่อน";
+      $("questionLabel").textContent = "ฟังเพลงเดียวกัน แล้วตอบแข่งกับเพื่อน";
       party.song = gameSongs[0];
       party.roundStartedAt = 0;
       resetRoundSync(0);
@@ -911,7 +911,7 @@
     }
     if (navigator.share) {
       try {
-        await navigator.share({ title: "เทงพลาย", text: `เข้ามาทายเพลงด้วยกัน! รหัสห้อง ${party.roomCode}`, url: inviteUrl });
+        await navigator.share({ title: "ทายเพลง", text: `เข้ามาทายเพลงด้วยกัน! รหัสห้อง ${party.roomCode}`, url: inviteUrl });
       } catch (error) {
         if (error.name !== "AbortError") {
           console.error("Unable to share the invite:", error);
@@ -962,7 +962,7 @@
   });
   $("audio").addEventListener("ended", () => {
     if (!$("game").hidden && !party.winner) {
-      $("playLabel").textContent = "คลิปจบแล้ว รอหมดเวลา";
+      $("playLabel").textContent = "เพลงจบแล้ว รอเฉลยสักครู่";
     }
   });
 

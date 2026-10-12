@@ -382,7 +382,8 @@ function playTone(freq, type, duration, gainVal = 0.18) {
     gain.connect(ctx.destination);
     osc.type = type;
     osc.frequency.value = freq;
-    gain.gain.setValueAtTime(gainVal, ctx.currentTime);
+    const volScale = typeof currentVolume === "number" ? Math.max(0.2, currentVolume) : 0.5;
+    gain.gain.setValueAtTime(gainVal * volScale, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + duration);
@@ -599,7 +600,7 @@ async function loadArtistTracks(artistName) {
     }
 
     if (!artistTracks.length) {
-      throw new Error(`Deezer ไม่พบเพลงที่มีคลิปตัวอย่างของ ${artistName}`);
+      throw new Error(`Deezer ไม่พบเพลงของ ${artistName}`);
     }
     return artistTracks;
   })();
@@ -760,7 +761,7 @@ async function loadPlaylistTracks(playlistId) {
       ).map(track => ({ ...track, language: "thai" }))
       : mappedTracks;
     if (!playableTracks.length) {
-      throw new Error(`เพลย์ลิสต์ ${playlist.title} ไม่มีคลิปตัวอย่างที่เล่นได้`);
+      throw new Error(`เพลย์ลิสต์ ${playlist.title} ไม่มีเพลงที่เล่นได้`);
     }
     return playableTracks;
   })();
@@ -1420,7 +1421,7 @@ function updateSettings() {
       : filteredSongs.length < selectedRounds
         ? filteredSongs.length
           ? `พบ ${filteredSongs.length} เพลงจาก Deezer เล่นได้ ${availableRounds} ข้อ`
-          : "ไม่พบเพลงที่มีคลิปตัวอย่าง ลองเปลี่ยนตัวเลือก"
+          : "ไม่พบเพลงที่เล่นได้ ลองเปลี่ยนตัวเลือกดูนะ"
         : `พบ ${filteredSongs.length} เพลงจาก Deezer สุ่ม ${selectedRounds} ข้อ`;
   $("settingsSummary").innerHTML = `${availableRounds} เพลง <span>•</span> ${time} วินาที / ข้อ <span>•</span> สูงสุด ${availableRounds * 100} คะแนน`;
   $("startButton").disabled = catalogLoading || Boolean(catalogError) || filteredSongs.length === 0;
@@ -1499,20 +1500,72 @@ function setAnswerButtonsEnabled(enabled) {
   });
 }
 
-const initialVolume = 0.7;
+let currentVolume = 0.5;
 const volumeStep = 0.1;
+let audioGainNode = null;
+let mediaSourceConnected = false;
+
+function ensureAudioGainNode() {
+  if (mediaSourceConnected) return;
+  const audio = $("audio");
+  if (!audio) return;
+  try {
+    const ctx = getAudioCtx();
+    if (ctx && ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+    audio.crossOrigin = "anonymous";
+    const source = ctx.createMediaElementSource(audio);
+    audioGainNode = ctx.createGain();
+    audioGainNode.gain.value = currentVolume;
+    source.connect(audioGainNode);
+    audioGainNode.connect(ctx.destination);
+    mediaSourceConnected = true;
+  } catch (err) {
+    // MediaElementAudioSource fallback to standard audio.volume
+    console.warn("Audio GainNode fallback active:", err);
+  }
+}
+
+function updateMediaSession(isPlaying = true) {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    if (isPlaying && activeSong) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: activeSong.title ? `${activeSong.title} — กำลังทายเพลง` : "กำลังทายเพลง",
+        artist: activeSong.artist || "ทายเพลง (Tune Battle)",
+        album: "Music Quiz Game",
+        artwork: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png" }
+        ]
+      });
+      navigator.mediaSession.playbackState = "playing";
+    } else {
+      navigator.mediaSession.playbackState = "paused";
+    }
+  } catch (_) {}
+}
 
 function updateVolumeControls() {
-  const audio = $("audio");
-  const volumePercent = Math.round(audio.volume * 100);
+  const volumePercent = Math.round(currentVolume * 100);
   $("volumeLevel").textContent = `${volumePercent}%`;
-  $("volumeDownBtn").disabled = audio.volume <= 0;
-  $("volumeUpBtn").disabled = audio.volume >= 1;
+  $("volumeDownBtn").disabled = currentVolume <= 0;
+  $("volumeUpBtn").disabled = currentVolume >= 1;
 }
 
 function changeVolume(amount) {
+  ensureAudioGainNode();
+  currentVolume = Math.min(1, Math.max(0, Math.round((currentVolume + amount) * 10) / 10));
   const audio = $("audio");
-  audio.volume = Math.min(1, Math.max(0, Math.round((audio.volume + amount) * 10) / 10));
+  try {
+    audio.volume = currentVolume;
+  } catch (_) {}
+  if (audioGainNode) {
+    try {
+      audioGainNode.gain.value = currentVolume;
+    } catch (_) {}
+  }
   updateVolumeControls();
 }
 
@@ -1583,7 +1636,7 @@ function showQuestion() {
   });
 
   if (window.songTriviaParty?.active) {
-    $("questionLabel").textContent = "ฟังคลิปเดียวกัน แล้วตอบแข่งกับเพื่อน";
+    $("questionLabel").textContent = "ฟังเพลงเดียวกัน แล้วตอบแข่งกับเพื่อน";
   } else {
     $("questionLabel").textContent = "ฟังเพลงที่เล่นอัตโนมัติ แล้วตอบให้ไวที่สุด";
   }
@@ -1642,7 +1695,7 @@ function setPreview(song, result, provider) {
   $("playLabel").textContent = "กำลังเริ่มเพลง...";
   $("playBtn").disabled = false;
   $("feedback").textContent = window.songTriviaParty?.active
-    ? "คลิปพร้อมแล้ว กำลังรอผู้เล่นคนอื่น..."
+    ? "เพลงพร้อมแล้ว กำลังรอเพื่อนๆ..."
     : "เพลงพร้อมแล้ว กำลังเริ่มเล่นอัตโนมัติ...";
   $("feedback").className = "feedback";
   if (window.songTriviaParty?.active) {
@@ -1685,8 +1738,8 @@ async function loadDeezerFallback(song, requestId = previewRequestId) {
   if (fallbackAttempted) return;
   fallbackAttempted = true;
   $("playBtn").disabled = true;
-  $("playLabel").textContent = "กำลังเตรียมคลิปสำรอง...";
-  $("feedback").textContent = "คลิป Apple Music ใช้งานไม่ได้ กำลังหาเพลงจาก Deezer...";
+  $("playLabel").textContent = "กำลังโหลดเพลงสำรอง...";
+  $("feedback").textContent = "เพลง Apple Music เล่นไม่ได้ กำลังค้นหาเพลงจาก Deezer...";
   $("feedback").className = "feedback";
 
   try {
@@ -1709,7 +1762,7 @@ async function loadDeezerFallback(song, requestId = previewRequestId) {
     setAnswerButtonsEnabled(false);
     $("playLabel").textContent = "ลองโหลดเพลงอีกครั้ง";
     $("playBtn").disabled = false;
-    $("feedback").textContent = "โหลดคลิปเพลงไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วกดปุ่มเพื่อลองอีกครั้ง";
+    $("feedback").textContent = "โหลดเพลงไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วกดลองใหม่อีกครั้ง";
     $("feedback").className = "feedback error";
   }
 }
@@ -1757,6 +1810,8 @@ async function playPreview() {
   }
 
   try {
+    ensureAudioGainNode();
+    updateMediaSession(true);
     await audio.play();
     beginTimer();
   } catch (error) {
@@ -1768,7 +1823,7 @@ async function playPreview() {
       return;
     }
     console.error("Unable to play the song preview:", error);
-    $("feedback").textContent = "เล่นคลิปเพลงไม่ได้ ลองแตะปุ่มเพื่อเริ่มฟังอีกครั้ง";
+    $("feedback").textContent = "เล่นเพลงไม่ได้ ลองแตะปุ่มเพื่อเริ่มฟังอีกครั้ง";
     $("feedback").className = "feedback error";
   }
 }
@@ -1796,7 +1851,7 @@ function finishQuestion(answer) {
       button.disabled = true;
     });
     $("playBtn").disabled = true;
-    $("feedback").textContent = "ส่งคำตอบแล้ว รอหมดเวลา";
+    $("feedback").textContent = "ส่งคำตอบแล้ว รอเฉลยสักครู่";
     $("feedback").className = "feedback";
     return;
   }
@@ -1836,19 +1891,19 @@ function finishQuestion(answer) {
     playCorrectSound();
     $("feedback").textContent = streak >= 3
       ? `🔥 STREAK x${streak}! ถูกต้อง +${points} คะแนน — "${current.title}" — ${current.artist}`
-      : `หมดเวลา! ถูกต้อง +${points} คะแนน — เฉลย: "${current.title}" — ${current.artist}`;
+      : `ถูกต้อง! +${points} คะแนน — เฉลย: "${current.title}" — ${current.artist}`;
     $("feedback").classList.add("success");
   } else if (finalAnswer === null) {
     streak = 0;
     $("streakPill").hidden = true;
     playWrongSound();
-    $("feedback").textContent = `หมดเวลา! ไม่ได้ตอบ — เฉลย: "${current.title}" — ${activeSong.artist}`;
+    $("feedback").textContent = `หมดเวลา! ตอบไม่ทัน — เฉลย: "${current.title}" — ${activeSong.artist}`;
     $("feedback").classList.add("error");
   } else {
     streak = 0;
     $("streakPill").hidden = true;
     playWrongSound();
-    $("feedback").textContent = `หมดเวลา! ตอบผิด — เฉลย: "${current.title}" — ${activeSong.artist}`;
+    $("feedback").textContent = `ยังไม่ถูกนะ! — เฉลย: "${current.title}" — ${activeSong.artist}`;
     $("feedback").classList.add("error");
   }
 
@@ -1887,9 +1942,9 @@ function showResults() {
   $("results").classList.remove("has-standings");
   $("finalScore").textContent = score;
   const scoreRatio = score / (gameSongs.length * 100);
-  $("resultTitle").textContent = scoreRatio >= .7 ? "คุณคือตัวจริง! 🎉" : scoreRatio >= .4 ? "เก่งมากเลย! 🎧" : "ขอบคุณที่มาเล่น! 🎵";
-  $("resultCopy").textContent = `ทำได้ดีมาก ${playerName}!`;
-  $("resultDetail").textContent = `ตอบถูก ${correctAnswers} จาก ${gameSongs.length} ข้อ`;
+  $("resultTitle").textContent = scoreRatio >= .7 ? "คุณคือเซียนเพลงตัวจริง! 🎉" : scoreRatio >= .4 ? "เก่งมากเลย! 🎧" : "สนุกมาก ไว้มาเล่นใหม่นะ! 🎵";
+  $("resultCopy").textContent = `ทำได้ยอดเยี่ยมมาก ${playerName}!`;
+  $("resultDetail").textContent = `ตอบถูก ${correctAnswers} จากทั้งหมด ${gameSongs.length} ข้อ`;
 
   /* confetti for good score */
   if (scoreRatio >= 0.6) launchConfetti();
@@ -2127,7 +2182,7 @@ $("decadeOptions").addEventListener("change", handleCatalogFilterChange);
 $("playlistOptions").addEventListener("change", handleSourceFilterChange);
 $("retryCatalogButton").addEventListener("click", refreshMusicCatalog);
 $("playBtn").addEventListener("click", playPreview);
-$("audio").volume = initialVolume;
+try { $("audio").volume = currentVolume; } catch (_) {}
 updateVolumeControls();
 $("volumeDownBtn").addEventListener("click", () => changeVolume(-volumeStep));
 $("volumeUpBtn").addEventListener("click", () => changeVolume(volumeStep));
@@ -2155,7 +2210,7 @@ $("audio").addEventListener("error", () => {
       $("timer").textContent = seconds;
       $("timerFill").style.width = "100%";
       setAnswerButtonsEnabled(false);
-      $("feedback").textContent = "เล่นคลิปเพลงไม่ได้ ลองกดปุ่มเพื่อลองโหลดเพลงอีกครั้ง";
+      $("feedback").textContent = "เล่นเพลงไม่ได้ ลองกดปุ่มเพื่อโหลดเพลงอีกครั้ง";
       $("feedback").className = "feedback error";
       $("playLabel").textContent = "ลองโหลดเพลงอีกครั้ง";
       $("playBtn").disabled = false;
@@ -2257,20 +2312,29 @@ document.addEventListener("visibilitychange", () => {
 /* ─── Share score button ─── */
 $("shareScoreBtn").addEventListener("click", () => {
   const total = gameSongs.length * 100;
-  const text = `ฉันได้ ${score}/${total} คะแนน (ตอบถูก ${correctAnswers}/${gameSongs.length} ข้อ) ใน เทงพลาย! ลองเล่นดูที่ https://tune-battle-pages.pages.dev/`;
+  const text = `ฉันได้ ${score}/${total} คะแนน (ตอบถูก ${correctAnswers}/${gameSongs.length} ข้อ) ในเกมทายเพลง! มาลองเล่นกันดูที่ https://tune-battle-pages.pages.dev/`;
   if (navigator.share) {
-    navigator.share({ title: "เทงพลาย", text }).catch(() => {});
+    navigator.share({ title: "ทายเพลง", text }).catch(() => {});
   } else {
     navigator.clipboard.writeText(text).then(
-      () => showToast("✓ คัดลอกแล้ว! ไปแปะในแชทได้เลย"),
+      () => showToast("✓ คัดลอกแล้ว! ส่งต่อให้เพื่อนได้เลย"),
       () => showToast("คัดลอกไม่สำเร็จ")
     );
   }
 });
 
-/* ─── Waveform: also toggle on audio events ─── */
-$("audio").addEventListener("play",  () => { if (timerStarted) $("playBtn").classList.add("playing"); });
-$("audio").addEventListener("pause", () => $("playBtn").classList.remove("playing"));
-$("audio").addEventListener("ended", () => $("playBtn").classList.remove("playing"));
+/* ─── Waveform & MediaSession: toggle on audio events ─── */
+$("audio").addEventListener("play",  () => {
+  if (timerStarted) $("playBtn").classList.add("playing");
+  updateMediaSession(true);
+});
+$("audio").addEventListener("pause", () => {
+  $("playBtn").classList.remove("playing");
+  updateMediaSession(false);
+});
+$("audio").addEventListener("ended", () => {
+  $("playBtn").classList.remove("playing");
+  updateMediaSession(false);
+});
 
 updateSettings();
