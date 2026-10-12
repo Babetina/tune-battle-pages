@@ -62,6 +62,18 @@ button {
   font-weight: 800;
   letter-spacing: -.7px;
   text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: transform .15s ease, opacity .15s ease;
+}
+
+.brand:hover {
+  opacity: .92;
+  transform: scale(1.02);
+}
+
+.brand:active {
+  transform: scale(0.98);
 }
 
 .brand-mark {
@@ -3462,4 +3474,104 @@ select:focus-visible {
   .result-actions { flex-direction: column; align-items: stretch; }
   .result-actions button { width: 100%; }
   .streak-pill { font-size: 14px; padding: 6px 10px; }
+}
+
+/* ─── IN-ROOM PROFILE EDITOR & BRAND LINK ─── */
+.brand {
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform .15s ease, opacity .15s ease;
+}
+.brand:hover {
+  opacity: .9;
+  transform: scale(1.02);
+}
+.brand:active {
+  transform: scale(.98);
+}
+
+.room-profile-card {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(197, 184, 255, .16);
+}
+
+.room-profile-title {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #c5b8ff;
+  letter-spacing: .02em;
+}
+
+.room-profile-edit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.room-avatar-picker {
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  font-size: 24px !important;
+  border-width: 2px !important;
+}
+
+.room-avatar-picker select {
+  width: 20px !important;
+  height: 20px !important;
+  right: -4px !important;
+  bottom: -2px !important;
+  font-size: 10px !important;
+}
+
+.room-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+
+.room-name-row input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(197, 184, 255, .25);
+  background: rgba(17, 17, 27, .7);
+  color: #fff;
+  font-size: 12px;
+}
+
+.room-name-row input:focus {
+  outline: none;
+  border-color: #ffd166;
+  box-shadow: 0 0 0 2px rgba(255, 209, 102, .2);
+}
+
+.small-action-button {
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #c5b8ff, #9980f2);
+  color: #1a162b;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .15s ease, opacity .15s ease;
+}
+
+.small-action-button:hover {
+  transform: translateY(-1px);
+  opacity: .95;
+}
+
+.small-action-button:active {
+  transform: translateY(0);
 }

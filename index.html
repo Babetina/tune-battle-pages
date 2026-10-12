@@ -33,7 +33,7 @@
   <a class="skip-link" href="#mainContent">ข้ามไปยังเนื้อหาหลัก</a>
   <main class="app-shell" id="mainContent" tabindex="-1">
     <header class="topbar">
-      <a class="brand" href="#" aria-label="ทายเพลง หน้าแรก">
+      <a class="brand" href="#" aria-label="ทายเพลง หน้าแรก" data-home-action="home">
         <span class="brand-mark" aria-hidden="true">♫</span>
         <span>ทาย<span class="brand-accent">เพลง</span></span>
       </a>
@@ -131,9 +131,23 @@
       </div>
       <form class="join-card" id="joinPartyForm">
         <h1>พร้อมทายเพลงหรือยัง?</h1>
-        <label class="field-label" for="joinName">ชื่อเล่น</label>
-        <input id="joinName" maxlength="20" placeholder="ใส่ชื่อของคุณ" required>
-        <label class="field-label" for="joinCode">รหัสห้อง</label>
+        <div class="profile-edit">
+          <label class="avatar-picker">
+            <span id="joinAvatarPreview" aria-hidden="true">🎧</span>
+            <select id="joinAvatarSelect" aria-label="เลือกอวาตาร์">
+              <option value="🎧">🎧</option><option value="🦊">🦊</option><option value="🐼">🐼</option>
+              <option value="🐸">🐸</option><option value="🐱">🐱</option><option value="🐯">🐯</option>
+              <option value="🦁">🦁</option><option value="🐻">🐻</option><option value="🐨">🐨</option>
+              <option value="🦄">🦄</option><option value="🐺">🐺</option><option value="🦋">🦋</option>
+              <option value="🐙">🐙</option><option value="🦖">🦖</option><option value="🐳">🐳</option>
+              <option value="🎵">🎵</option><option value="🎸">🎸</option><option value="🎹">🎹</option>
+              <option value="🎤">🎤</option><option value="🎺">🎺</option><option value="🥁">🥁</option>
+              <option value="🌟">🌟</option><option value="🔥">🔥</option><option value="💎">💎</option>
+            </select>
+          </label>
+          <label class="profile-name-field"><span>เลือกอวาตาร์และชื่อเล่น</span><input id="joinName" maxlength="20" placeholder="ใส่ชื่อของคุณ" required></label>
+        </div>
+        <label class="field-label" for="joinCode" style="margin-top: 14px;">รหัสห้อง</label>
         <input id="joinCode" maxlength="8" placeholder="เช่น A7K9Q2" autocomplete="off" required>
         <p class="backend-notice" id="joinMessage" role="status"></p>
         <button class="primary-button" type="submit">เข้าร่วมห้อง <span aria-hidden="true">→</span></button>
@@ -149,6 +163,28 @@
         <aside class="players-card">
           <div class="section-heading"><p class="eyebrow yellow">ผู้เล่น <span id="playerCountLabel">0/100</span></p><span class="live-dot"></span></div>
           <ul id="partyPlayers" class="party-player-list" aria-live="polite"></ul>
+          <div class="room-profile-card" id="roomProfileCard">
+            <p class="room-profile-title">เปลี่ยนโปรไฟล์ของคุณ</p>
+            <div class="room-profile-edit">
+              <label class="avatar-picker room-avatar-picker" title="แตะเพื่อเปลี่ยนอวาตาร์">
+                <span id="roomAvatarPreview" aria-hidden="true">🎧</span>
+                <select id="roomAvatarSelect" aria-label="เลือกอวาตาร์">
+                  <option value="🎧">🎧</option><option value="🦊">🦊</option><option value="🐼">🐼</option>
+                  <option value="🐸">🐸</option><option value="🐱">🐱</option><option value="🐯">🐯</option>
+                  <option value="🦁">🦁</option><option value="🐻">🐻</option><option value="🐨">🐨</option>
+                  <option value="🦄">🦄</option><option value="🐺">🐺</option><option value="🦋">🦋</option>
+                  <option value="🐙">🐙</option><option value="🦖">🦖</option><option value="🐳">🐳</option>
+                  <option value="🎵">🎵</option><option value="🎸">🎸</option><option value="🎹">🎹</option>
+                  <option value="🎤">🎤</option><option value="🎺">🎺</option><option value="🥁">🥁</option>
+                  <option value="🌟">🌟</option><option value="🔥">🔥</option><option value="💎">💎</option>
+                </select>
+              </label>
+              <div class="room-name-row">
+                <input id="roomNameInput" maxlength="20" placeholder="ชื่อเล่นใหม่" aria-label="ชื่อเล่นของคุณ">
+                <button type="button" id="roomNameSaveBtn" class="small-action-button">บันทึก</button>
+              </div>
+            </div>
+          </div>
         </aside>
         <section class="room-config-card">
           <div class="room-stepper"><span class="current">☷ ตั้งค่า</span><i>→</i><span>♫ เลือกเพลง</span><i>→</i><span>▶ เล่น</span></div>

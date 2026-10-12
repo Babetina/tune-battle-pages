@@ -52,6 +52,14 @@
     document.querySelector(".main-nav").hidden =
       screenId !== "home" && (screenId !== "lobby" || Boolean(party.channel));
     $("returnPartyButton").hidden = screenId !== "lobby" || !party.channel;
+    if (screenId === "partyRoom") {
+      syncRoomProfileInputs();
+    } else if (screenId === "home") {
+      $("audio")?.pause();
+      if (window.songTriviaPartyGame?.stopForSettings) {
+        window.songTriviaPartyGame.stopForSettings();
+      }
+    }
   }
 
   function resetRoundSync(index) {
@@ -520,6 +528,7 @@
     if (trackStatus !== "ok") throw new Error(`เข้าห้องไม่สำเร็จ (${trackStatus})`);
     updateRoomLink();
     renderPlayers();
+    syncRoomProfileInputs();
     if (!isHost) {
       await send("request-state");
       roomResponseTimer = window.setTimeout(() => {
@@ -814,14 +823,84 @@
     $("avatarPreview").textContent = $("avatarSelect").value;
   });
 
+  $("joinAvatarSelect")?.addEventListener("change", () => {
+    $("joinAvatarPreview").textContent = $("joinAvatarSelect").value;
+  });
+
+  function syncRoomProfileInputs() {
+    const avatarEl = $("roomAvatarSelect");
+    const previewEl = $("roomAvatarPreview");
+    const nameInput = $("roomNameInput");
+    if (avatarEl && party.avatar) avatarEl.value = party.avatar;
+    if (previewEl && party.avatar) previewEl.textContent = party.avatar;
+    if (nameInput) nameInput.value = party.name || "";
+  }
+
+  async function updateMyProfile(newName, newAvatar) {
+    if (!party.channel) return;
+    const finalName = (newName || party.name || "").trim();
+    if (!finalName) return;
+    const finalAvatar = newAvatar || party.avatar || "🎧";
+    party.name = finalName;
+    party.avatar = finalAvatar;
+    try {
+      await party.channel.track({
+        id: party.playerId,
+        name: party.name,
+        avatar: party.avatar,
+        host: party.isHost,
+        joinedAt: Date.now()
+      });
+      renderPlayers();
+      syncRoomProfileInputs();
+      const saveBtn = $("roomNameSaveBtn");
+      if (saveBtn) {
+        saveBtn.textContent = "บันทึกแล้ว ✓";
+        setTimeout(() => {
+          if (saveBtn) saveBtn.textContent = "บันทึก";
+        }, 1200);
+      }
+    } catch (err) {
+      console.error("Unable to update room profile:", err);
+    }
+  }
+
+  $("roomAvatarSelect")?.addEventListener("change", () => {
+    const newAvatar = $("roomAvatarSelect").value;
+    const preview = $("roomAvatarPreview");
+    if (preview) preview.textContent = newAvatar;
+    updateMyProfile(party.name, newAvatar);
+  });
+
+  $("roomNameSaveBtn")?.addEventListener("click", () => {
+    const newName = $("roomNameInput")?.value.trim();
+    if (!newName) {
+      $("roomNameInput")?.focus();
+      return;
+    }
+    updateMyProfile(newName, $("roomAvatarSelect")?.value || party.avatar);
+  });
+
+  $("roomNameInput")?.addEventListener("keydown", event => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("roomNameSaveBtn")?.click();
+    }
+  });
+
   document.querySelectorAll("[data-home-action]").forEach(button => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
       const action = button.dataset.homeAction;
       if (action === "home") {
-        leaveParty().catch(error => {
-          console.error("Unable to leave the room:", error);
+        if (party.channel) {
+          leaveParty().catch(error => {
+            console.error("Unable to leave the room:", error);
+            showScreen("home");
+          });
+        } else {
           showScreen("home");
-        });
+        }
       } else if (action === "solo") {
         if (party.channel) leaveParty(false).catch(console.error);
         showScreen("lobby");
@@ -832,6 +911,7 @@
         setMessage("partySetupMessage", "");
         showScreen("partyProfile");
       } else if (action === "join") {
+        setMessage("joinMessage", "");
         showScreen("joinParty");
         $("joinName").focus();
       }
@@ -856,6 +936,7 @@
     event.preventDefault();
     const name = $("joinName").value.trim();
     const roomCode = $("joinCode").value.trim().toUpperCase();
+    const avatar = $("joinAvatarSelect")?.value || "🎧";
     if (!name) return $("joinName").focus();
     if (!/^[A-HJ-NP-Z2-9]{6}$/.test(roomCode)) {
       setMessage("joinMessage", "รหัสห้องต้องมี 6 ตัวอักษรหรือตัวเลข", true);
@@ -863,7 +944,7 @@
     }
     setMessage("joinMessage", "กำลังค้นหาห้อง...");
     try {
-      await connect(roomCode, { name, avatar: "🎧" }, false);
+      await connect(roomCode, { name, avatar }, false);
     } catch (error) {
       console.error("Unable to join a party room:", error);
       setMessage("joinMessage", error.message, true);
