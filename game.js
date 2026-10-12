@@ -155,6 +155,9 @@ let catalogLoading = false;
 let catalogError = "";
 let catalogWarning = "";
 let catalogRequestId = 0;
+let catalogRefreshTimer;
+let catalogLoadInProgress = false;
+let catalogRefreshPending = false;
 let searchCatalogTimer;
 let questionIndex = 0;
 let score = 0;
@@ -382,12 +385,13 @@ async function fetchDeezer(url) {
   return data;
 }
 
-async function fetchDeezerPages(firstUrl) {
+async function fetchDeezerPages(firstUrl, maxItems = Number.POSITIVE_INFINITY) {
   const results = [];
   let url = firstUrl;
-  while (url) {
+  while (url && results.length < maxItems) {
     const data = await fetchDeezer(url);
     if (Array.isArray(data.data)) results.push(...data.data);
+    if (results.length > maxItems) results.length = maxItems;
     const nextUrl = data.next;
     url = nextUrl && new URL(nextUrl).origin === "https://api.deezer.com" ? nextUrl : "";
   }
@@ -646,7 +650,10 @@ async function loadPlaylistTracks(playlistId) {
     }
 
     const playlist = await findDeezerPlaylist(playlistId);
-    const tracks = await fetchDeezerPages(`https://api.deezer.com/playlist/${playlist.id}/tracks?limit=100`);
+    const tracks = await fetchDeezerPages(
+      `https://api.deezer.com/playlist/${playlist.id}/tracks?limit=100`,
+      200
+    );
     const mappedTracks = uniqueSongs(tracks.map(track => mapDeezerTrack(track, {
       playlists: [playlistId],
       genres: playlistGenres[playlistId] || []
@@ -707,9 +714,14 @@ async function loadDecadeTracks(decades, baseTracks) {
   }
 
   const detailed = [];
-  for (let index = 0; index < candidates.length; index += 8) {
-    const batch = candidates.slice(index, index + 8);
-    detailed.push(...await Promise.all(batch.map(async song => {
+  const requestedRounds = Number($("roundCountSelect").value);
+  const detailLimit = Math.min(
+    candidates.length,
+    Math.max(requestedRounds, Math.min(32, requestedRounds * 2))
+  );
+  for (let index = 0; index < detailLimit; index += 2) {
+    const batch = candidates.slice(index, Math.min(index + 2, detailLimit));
+    const results = await Promise.allSettled(batch.map(async song => {
       const cacheKey = `track:${song.id}`;
       if (!deezerCache.has(cacheKey)) {
         deezerCache.set(cacheKey, fetchDeezer(`https://api.deezer.com/track/${song.id}`));
@@ -723,9 +735,32 @@ async function loadDecadeTracks(decades, baseTracks) {
       }
       const mapped = mapDeezerTrack(track, { genres: song.genres, playlists: song.playlists });
       return mapped;
-    })));
+    }));
+    const batchErrors = results.filter(result => result.status === "rejected");
+    const quotaError = batchErrors.find(result =>
+      /quota|429|rate.?limit/i.test(result.reason?.message || "")
+    );
+    if (quotaError) throw quotaError.reason;
+    detailed.push(...results
+      .filter(result => result.status === "fulfilled")
+      .map(result => result.value)
+      .filter(Boolean));
+
+    const matchingDecadeCount = detailed.filter(song => decades.includes(song.decade)).length;
+    if (matchingDecadeCount >= requestedRounds) break;
+    if (batchErrors.length && detailed.length === 0) throw batchErrors[0].reason;
   }
   return uniqueSongs(detailed.filter(Boolean));
+}
+
+function scheduleCatalogRefresh(delay = 250) {
+  window.clearTimeout(catalogRefreshTimer);
+  catalogRequestId++;
+  catalogLoading = true;
+  catalogError = "";
+  catalogWarning = "";
+  updateSettings();
+  catalogRefreshTimer = window.setTimeout(refreshMusicCatalog, delay);
 }
 
 async function loadCurrentCatalog() {
@@ -830,28 +865,42 @@ async function loadCurrentCatalog() {
 }
 
 async function refreshMusicCatalog() {
-  const requestId = ++catalogRequestId;
-  catalogLoading = true;
-  catalogError = "";
-  catalogWarning = "";
-  catalogSongs = [];
-  catalogSourceSongs = [];
-  updateSettings();
+  if (catalogLoadInProgress) {
+    catalogRefreshPending = true;
+    return;
+  }
+
+  catalogLoadInProgress = true;
   try {
-    const { tracks, sourceTracks } = await loadCurrentCatalog();
-    if (requestId !== catalogRequestId) return;
-    catalogSongs = tracks;
-    catalogSourceSongs = sourceTracks;
-  } catch (error) {
-    if (requestId !== catalogRequestId) return;
-    console.error("Unable to load the Deezer music catalog:", error);
-    catalogError = error.message || "โหลดคลังเพลง Deezer ไม่สำเร็จ";
-    catalogSourceSongs = [];
-  } finally {
-    if (requestId === catalogRequestId) {
-      catalogLoading = false;
+    do {
+      catalogRefreshPending = false;
+      const requestId = ++catalogRequestId;
+      catalogLoading = true;
+      catalogError = "";
+      catalogWarning = "";
+      catalogSongs = [];
+      catalogSourceSongs = [];
       updateSettings();
+      try {
+        const { tracks, sourceTracks } = await loadCurrentCatalog();
+        if (requestId !== catalogRequestId) continue;
+        catalogSongs = tracks;
+        catalogSourceSongs = sourceTracks;
+      } catch (error) {
+        if (requestId !== catalogRequestId) continue;
+        console.error("Unable to load the Deezer music catalog:", error);
+        catalogError = error.message || "โหลดคลังเพลง Deezer ไม่สำเร็จ";
+        catalogSourceSongs = [];
+      } finally {
+        if (requestId === catalogRequestId) {
+          catalogLoading = false;
+          updateSettings();
+        }
+      }
     }
+    while (catalogRefreshPending);
+  } finally {
+    catalogLoadInProgress = false;
   }
 }
 
@@ -1179,7 +1228,7 @@ function handleSourceFilterChange(event) {
 
   keepOnlySelectedOption(input);
   updateSettings();
-  refreshMusicCatalog();
+  scheduleCatalogRefresh();
 }
 
 function handleCatalogFilterChange(event) {
@@ -1196,7 +1245,7 @@ function handleCatalogFilterChange(event) {
     }
   }
   updateSettings();
-  refreshMusicCatalog();
+  scheduleCatalogRefresh();
 }
 
 function keepOnlySelectedOption(input) {
@@ -1386,6 +1435,9 @@ function showQuestion() {
   seconds = questionTime;
 
   const current = gameSongs[questionIndex];
+  $("gameSettingsButton").hidden = Boolean(
+    window.songTriviaParty?.active && !window.songTriviaParty.isHost
+  );
   $("round").innerHTML = `ข้อที่ ${questionIndex + 1} <span>/ ${gameSongs.length}</span>`;
   $("questionText").textContent = "เพลงนี้ชื่ออะไร?";
   $("timer").textContent = seconds;
@@ -1885,7 +1937,7 @@ $("musicSearch").addEventListener("input", () => {
   updateSettings();
   clearTimeout(searchCatalogTimer);
   searchCatalogTimer = window.setTimeout(() => {
-    refreshMusicCatalog();
+    scheduleCatalogRefresh(0);
     searchArtistChoices($("musicSearch").value);
   }, 350);
 });
@@ -1964,6 +2016,7 @@ $("restartBtn").addEventListener("click", () => {
 });
 $("gameSettingsButton").addEventListener("click", () => {
   if (window.songTriviaParty?.active) {
+    if (!window.songTriviaParty.isHost) return;
     window.songTriviaParty.requestReturnToRoom().catch(error => {
       console.error("Unable to return the party to its settings:", error);
       $("feedback").textContent = `กลับไปตั้งค่าไม่สำเร็จ: ${error.message}`;
