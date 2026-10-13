@@ -526,6 +526,16 @@ function normalizeArtistName(name) {
   return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
+function normalizeSongTitle(title) {
+  if (!title) return "";
+  return title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s*[\(\[](?:remaster(?:ed)?|version|live|radio edit|feat\.?|ft\.?|acoustic|bonus track|deluxe)[^\)\]]*[\)\]]/gi, "")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
 function registerArtistDetails(artist) {
   if (!artist?.id || !artist.name) return;
   const key = normalizeArtistName(artist.name);
@@ -1450,13 +1460,18 @@ function startGame() {
     getSelectedValues("artistOptions").map(normalizeArtistName)
   );
   gameSongs = shuffledCatalog.slice(0, requestedRounds).map(song => {
+    const normalizedTargetTitle = normalizeSongTitle(song.title);
     const seenTitles = new Set([song.title]);
+    const seenNormalizedTitles = new Set([normalizedTargetTitle]);
     const candidates = distractorCatalog.filter(candidate => {
       if (!candidate.title || seenTitles.has(candidate.title)) return false;
+      const normalizedCandidateTitle = normalizeSongTitle(candidate.title);
+      if (!normalizedCandidateTitle || seenNormalizedTitles.has(normalizedCandidateTitle)) return false;
       if (selectedArtists.size && !selectedArtists.has(normalizeArtistName(candidate.artist || ""))) {
         return false;
       }
       seenTitles.add(candidate.title);
+      seenNormalizedTitles.add(normalizedCandidateTitle);
       return true;
     });
     const relatedCandidates = candidates.filter(candidate =>
@@ -1596,9 +1611,151 @@ function changeVolume(amount) {
   updateVolumeControls();
 }
 
+function updateAudioVisualizerState(state) {
+  const stage = $("musicStageHub");
+  const playBtn = $("playBtn");
+  if (!stage || !playBtn) return;
+  if (state === "playing") {
+    stage.classList.add("is-playing");
+    playBtn.classList.add("playing");
+  } else {
+    stage.classList.remove("is-playing");
+    playBtn.classList.remove("playing");
+  }
+}
+
+function showAutoplayPrompt() {
+  const banner = $("autoplayUnlockBanner");
+  if (banner) banner.hidden = false;
+}
+
+function hideAutoplayPrompt() {
+  const banner = $("autoplayUnlockBanner");
+  if (banner) banner.hidden = true;
+}
+
+$("autoplayUnlockBtn")?.addEventListener("click", () => {
+  hideAutoplayPrompt();
+  primeAudioPlayback();
+  const audio = $("audio");
+  if (audio && activeSong && !audio.ended) {
+    audio.play().catch(console.warn);
+  }
+});
+
+let countdownInterval = null;
+function triggerCountdown({ durationMs = 2500, onStart }) {
+  const overlay = $("syncCountdownOverlay");
+  const digitEl = $("countdownDigit");
+  const subtextEl = $("countdownSubtext");
+  const badgeEl = $("countdownReadyBadge");
+
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+
+  if (!overlay || !digitEl) {
+    if (onStart) onStart();
+    return;
+  }
+
+  overlay.hidden = false;
+  if (badgeEl) badgeEl.textContent = window.songTriviaParty?.active ? "ทุกคนพร้อมแล้ว!" : "เตรียมตัวให้พร้อม!";
+  if (subtextEl) subtextEl.textContent = "เพลงกำลังจะเริ่ม...";
+
+  const startTime = performance.now();
+  let lastSecondAnnounced = -1;
+
+  const updateTick = () => {
+    const elapsed = performance.now() - startTime;
+    const remainingMs = Math.max(0, durationMs - elapsed);
+    const currentSec = Math.ceil(remainingMs / 1000);
+
+    if (currentSec !== lastSecondAnnounced) {
+      lastSecondAnnounced = currentSec;
+      if (currentSec > 0) {
+        digitEl.textContent = currentSec;
+        digitEl.style.animation = "none";
+        void digitEl.offsetWidth; // re-trigger pop animation
+        digitEl.style.animation = "countdownDigitPop 0.8s cubic-bezier(0.16, 1, 0.3, 1)";
+      } else {
+        digitEl.textContent = "ทายเลย!";
+      }
+    }
+
+    if (remainingMs <= 0) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+      overlay.hidden = true;
+      if (onStart) onStart();
+    }
+  };
+
+  updateTick();
+  countdownInterval = setInterval(updateTick, 40);
+}
+
+function waitForAudioBuffering(audio, maxWaitMs = 3800) {
+  return new Promise(resolve => {
+    if (audio.readyState >= 3) { // HAVE_FUTURE_DATA or HAVE_ENOUGH_DATA
+      return resolve(true);
+    }
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      audio.removeEventListener("canplay", finish);
+      audio.removeEventListener("canplaythrough", finish);
+      audio.removeEventListener("loadeddata", finish);
+      audio.removeEventListener("error", finish);
+      clearTimeout(timer);
+      resolve(true);
+    };
+    audio.addEventListener("canplay", finish, { once: true });
+    audio.addEventListener("canplaythrough", finish, { once: true });
+    audio.addEventListener("loadeddata", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    const timer = setTimeout(finish, maxWaitMs);
+  });
+}
+
+function preloadNextSong(index) {
+  if (!gameSongs || index >= gameSongs.length) return;
+  const next = gameSongs[index];
+  if (!next) return;
+  if (next.previewUrl) {
+    const preloader = new Audio();
+    preloader.preload = "auto";
+    preloader.src = next.previewUrl;
+    preloader.load();
+  } else {
+    findPreview(next, "th").then(res => {
+      if (res && res.previewUrl) {
+        next.previewUrl = res.previewUrl;
+        next.trackUrl = res.trackViewUrl || "";
+        next.previewProvider = "Apple Music";
+        const preloader = new Audio();
+        preloader.preload = "auto";
+        preloader.src = res.previewUrl;
+        preloader.load();
+      }
+    }).catch(() => {});
+  }
+}
+
 function showQuestion() {
   previewRequestId++;
   clearInterval(timer);
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+  const overlay = $("syncCountdownOverlay");
+  if (overlay) overlay.hidden = true;
+  hideAutoplayPrompt();
+  updateAudioVisualizerState("idle");
+
   $("audio").pause();
   $("audio").removeAttribute("src");
   $("audio").load();
@@ -1615,11 +1772,23 @@ function showQuestion() {
   $("gameSettingsButton").hidden = Boolean(
     window.songTriviaParty?.active && !window.songTriviaParty.isHost
   );
+  const modeBadge = $("gameModeBadge");
+  if (modeBadge) {
+    modeBadge.textContent = window.songTriviaParty?.active
+      ? (window.songTriviaParty.isHost ? "👑 โฮสต์ห้องปาร์ตี้" : "🎮 ปาร์ตี้กับเพื่อน")
+      : "🎯 เล่นคนเดียว";
+  }
+
   $("round").innerHTML = `ข้อที่ ${questionIndex + 1} <span>/ ${gameSongs.length}</span>`;
   $("questionText").textContent = "เพลงนี้ชื่ออะไร?";
   $("timer").textContent = seconds;
   $("timerFill").style.width = "100%";
   $("timerFill").classList.remove("low");
+  const timerCard = $("gameTimerCard");
+  if (timerCard) timerCard.classList.remove("urgent");
+  const circProgress = $("circularTimerProgress");
+  if (circProgress) circProgress.style.strokeDashoffset = 0;
+
   $("feedback").textContent = "";
   $("feedback").className = "feedback";
   $("liveAnswersPanel").hidden = true;
@@ -1705,30 +1874,54 @@ async function findDeezerPreview(song) {
   );
 }
 
-function setPreview(song, result, provider) {
+async function setPreview(song, result, provider) {
   const audio = $("audio");
   audio.pause();
   activeSong = null;
   audio.removeAttribute("src");
   audio.load();
+
+  const previewUrl = result.previewUrl || result.preview;
   activeSong = {
     ...song,
-    previewUrl: result.previewUrl || result.preview,
+    previewUrl,
     trackUrl: result.trackViewUrl || result.link,
     provider
   };
+
+  // Cache resolved preview URL on the song in gameSongs
+  if (gameSongs[questionIndex]) {
+    gameSongs[questionIndex].previewUrl = previewUrl;
+    gameSongs[questionIndex].trackUrl = activeSong.trackUrl;
+    gameSongs[questionIndex].previewProvider = provider;
+  }
+
+  updateAudioVisualizerState("buffering");
+  $("playLabel").textContent = "กำลังโหลดไฟล์เสียง...";
+  $("feedback").textContent = "กำลังโหลดเพลงลงเครื่อง...";
+  $("feedback").className = "feedback";
+
   audio.src = activeSong.previewUrl;
   audio.load();
-  $("playLabel").textContent = "กำลังเริ่มเล่นเพลง...";
+
+  // Wait for audio data to actually buffer before reporting ready!
+  await waitForAudioBuffering(audio);
+
+  $("playLabel").textContent = "เพลงพร้อมแล้ว";
   $("playBtn").disabled = false;
-  $("feedback").textContent = window.songTriviaParty?.active
-    ? "เพลงพร้อมแล้ว กำลังรอเพื่อนๆ..."
-    : "เพลงพร้อมแล้ว เพลงจะเล่นอัตโนมัติ...";
-  $("feedback").className = "feedback";
+
+  // Background prefetch the next round's song
+  preloadNextSong(questionIndex + 1);
+
   if (window.songTriviaParty?.active) {
+    $("feedback").textContent = "เพลงพร้อมแล้ว กำลังรอผู้เล่นคนอื่น...";
     window.songTriviaParty.previewReady();
   } else {
-    playPreview();
+    $("feedback").textContent = "เพลงพร้อมแล้ว เพลงจะเล่นอัตโนมัติ...";
+    triggerCountdown({
+      durationMs: 1800,
+      onStart: () => playPreview()
+    });
   }
 }
 
@@ -1786,7 +1979,10 @@ async function loadDeezerFallback(song, requestId = previewRequestId) {
     questionStartedAt = 0;
     $("timer").textContent = seconds;
     $("timerFill").style.width = "100%";
+    const circProgress = $("circularTimerProgress");
+    if (circProgress) circProgress.style.strokeDashoffset = 0;
     setAnswerButtonsEnabled(false);
+    updateAudioVisualizerState("idle");
     $("playLabel").textContent = "ข้ามไปยังข้อถัดไป...";
     $("playBtn").disabled = true;
     $("feedback").textContent = "โหลดเพลงไม่สำเร็จ กำลังข้ามไปยังข้อถัดไป...";
@@ -1799,7 +1995,7 @@ async function loadDeezerFallback(song, requestId = previewRequestId) {
   }
 }
 
-function beginTimer() {
+function beginTimer(targetStartAt = 0) {
   if (timerStarted || answered) return;
   timerStarted = true;
   questionStartedAt = performance.now();
@@ -1807,28 +2003,62 @@ function beginTimer() {
   setAnswerButtonsEnabled(true);
   $("playLabel").textContent = "กำลังเล่นเพลง...";
   $("feedback").textContent = "เลือกชื่อเพลงให้ถูกก่อนหมดเวลา!";
-  /* waveform */
   $("playBtn").classList.add("playing");
+  updateAudioVisualizerState("playing");
+
+  const totalMs = questionTime * 1000;
+  const startEpoch = (targetStartAt && targetStartAt > 0)
+    ? (window.songTriviaParty?.active && window.songTriviaParty.toLocalTime
+        ? window.songTriviaParty.toLocalTime(targetStartAt)
+        : targetStartAt)
+    : Date.now();
 
   timer = setInterval(() => {
-    const elapsed = timerPausedElapsed + (performance.now() - questionStartedAt);
-    const remaining = Math.max(0, questionTime * 1000 - elapsed);
+    const now = Date.now();
+    const elapsed = (targetStartAt && targetStartAt > 0)
+      ? Math.max(0, now - startEpoch)
+      : (timerPausedElapsed + (performance.now() - questionStartedAt));
+    const remaining = Math.max(0, totalMs - elapsed);
     seconds = Math.ceil(remaining / 1000);
     $("timer").textContent = seconds;
-    $("timerFill").style.width = `${(remaining / (questionTime * 1000)) * 100}%`;
 
+    const pct = Math.max(0, Math.min(100, (remaining / totalMs) * 100));
+    $("timerFill").style.width = `${pct}%`;
+
+    const circProgress = $("circularTimerProgress");
+    if (circProgress) {
+      const circOffset = 283 - (283 * pct) / 100;
+      circProgress.style.strokeDashoffset = circOffset;
+    }
+
+    const timerCard = $("gameTimerCard");
     if (seconds <= 5) {
       $("timerFill").classList.add("low");
+      if (timerCard) timerCard.classList.add("urgent");
+    } else {
+      $("timerFill").classList.remove("low");
+      if (timerCard) timerCard.classList.remove("urgent");
     }
+
+    // Periodic gentle drift correction check (every 500ms after initial second)
+    const audio = $("audio");
+    if (audio && !audio.paused && targetStartAt && elapsed > 800) {
+      const expectedTime = elapsed / 1000;
+      if (Math.abs(audio.currentTime - expectedTime) > 0.45 && expectedTime < questionTime) {
+        try { audio.currentTime = expectedTime; } catch (_) {}
+      }
+    }
+
     if (remaining <= 0) {
       clearInterval(timer);
       $("audio").pause();
+      updateAudioVisualizerState("idle");
       finishQuestion(null);
     }
   }, 100);
 }
 
-async function playPreview() {
+async function playPreview(targetStartAt = 0) {
   if (!activeSong) {
     await loadPreview(gameSongs[questionIndex]);
     return;
@@ -1837,7 +2067,22 @@ async function playPreview() {
 
   const audio = $("audio");
   audio.pause();
-  if (timerStarted || audio.currentTime >= questionTime || audio.ended) {
+
+  // Drift realignment: seek if playback delayed by more than 250ms
+  let seekOffset = 0;
+  if (targetStartAt && targetStartAt > 0) {
+    const hostNow = window.songTriviaParty?.active && window.songTriviaParty.getHostTime
+      ? window.songTriviaParty.getHostTime()
+      : Date.now();
+    const elapsedSinceStart = (hostNow - targetStartAt) / 1000;
+    if (elapsedSinceStart > 0.25) {
+      seekOffset = Math.min(questionTime - 0.5, elapsedSinceStart);
+    }
+  }
+
+  if (seekOffset > 0) {
+    try { audio.currentTime = seekOffset; } catch (_) {}
+  } else if (timerStarted || audio.currentTime >= questionTime || audio.ended) {
     audio.currentTime = 0;
   }
 
@@ -1845,11 +2090,23 @@ async function playPreview() {
     ensureAudioGainNode();
     updateMediaSession(true);
     await audio.play();
-    beginTimer();
+    hideAutoplayPrompt();
+    updateAudioVisualizerState("playing");
+    beginTimer(targetStartAt);
   } catch (error) {
     if (error.name === "AbortError" && !activeSong) return;
     console.warn("Autoplay attempt failed:", error);
-    beginTimer();
+    showAutoplayPrompt();
+    updateAudioVisualizerState("idle");
+
+    const onAudioPlaying = () => {
+      audio.removeEventListener("playing", onAudioPlaying);
+      hideAutoplayPrompt();
+      updateAudioVisualizerState("playing");
+      beginTimer(targetStartAt);
+    };
+    audio.addEventListener("playing", onAudioPlaying, { once: true });
+
     const resumeAutoplay = () => {
       audio.play().catch(() => {});
     };
@@ -1877,21 +2134,20 @@ function finishQuestion(answer) {
       questionTime * 1000,
       performance.now() - questionStartedAt
     );
-    document.querySelectorAll(".answer-button").forEach(button => {
-      button.disabled = true;
-    });
-    $("playBtn").disabled = true;
-    $("feedback").textContent = "ส่งคำตอบแล้ว รอเฉลยสักครู่";
-    $("feedback").className = "feedback";
-    return;
+    clearInterval(timer);
+    $("audio").pause();
+  } else {
+    answered = true;
   }
-  answered = true;
 
-  const current = gameSongs[questionIndex];
+  const current = gameSongs[questionIndex] || {};
   const finalAnswer = selectedAnswer;
   const isCorrect = finalAnswer === current.title;
   const elapsed = selectedAnswerElapsed ?? questionTime * 1000;
   const points = Math.max(0, Math.ceil((1 - elapsed / (questionTime * 1000)) * 100));
+  const artist = current.artist || activeSong?.artist || "";
+  const trackUrl = activeSong?.trackUrl || current.trackUrl;
+  const provider = activeSong?.provider || current.provider || "Apple Music";
 
   /* record history */
   gameHistory.push({ song: current, isCorrect, points: isCorrect ? points : 0 });
@@ -1920,29 +2176,30 @@ function finishQuestion(answer) {
     }
     playCorrectSound();
     $("feedback").textContent = streak >= 3
-      ? `🔥 STREAK x${streak}! ถูกต้อง +${points} คะแนน — "${current.title}" — ${current.artist}`
-      : `ถูกต้อง! +${points} คะแนน — เฉลย: "${current.title}" — ${current.artist}`;
+      ? `🔥 STREAK x${streak}! ถูกต้อง +${points} คะแนน — "${current.title}" — ${artist}`
+      : `ถูกต้อง! +${points} คะแนน — เฉลย: "${current.title}" — ${artist}`;
     $("feedback").classList.add("success");
   } else if (finalAnswer === null) {
     streak = 0;
     $("streakPill").hidden = true;
     playWrongSound();
-    $("feedback").textContent = `หมดเวลา! ตอบไม่ทัน — เฉลย: "${current.title}" — ${activeSong.artist}`;
+    $("feedback").textContent = `หมดเวลา! ตอบไม่ทัน — เฉลย: "${current.title}" — ${artist}`;
     $("feedback").classList.add("error");
   } else {
     streak = 0;
     $("streakPill").hidden = true;
     playWrongSound();
-    $("feedback").textContent = `ยังไม่ถูกนะ! — เฉลย: "${current.title}" — ${activeSong.artist}`;
+    $("feedback").textContent = `ยังไม่ถูกนะ! — เฉลย: "${current.title}" — ${artist}`;
     $("feedback").classList.add("error");
   }
 
   /* waveform off */
   $("playBtn").classList.remove("playing");
+  updateAudioVisualizerState("revealed");
 
-  if (activeSong.trackUrl) {
-    $("trackLink").href = activeSong.trackUrl;
-    $("trackLink").textContent = `เปิดเพลงใน ${activeSong.provider} ↗`;
+  if (trackUrl) {
+    $("trackLink").href = trackUrl;
+    $("trackLink").textContent = `เปิดเพลงใน ${provider} ↗`;
     $("trackLink").hidden = false;
   }
 
@@ -1965,6 +2222,7 @@ function showResults() {
   clearInterval(timer);
   $("audio").pause();
   $("playBtn").classList.remove("playing");
+  updateAudioVisualizerState("idle");
   $("game").hidden = true;
   $("results").hidden = false;
   $("finalStandings").hidden = true;
@@ -2060,6 +2318,7 @@ window.songTriviaPartyGame = {
   },
   showPartyResult: ({ title, artist, players, answers, scores, correctCounts, winCondition }) => {
     answered = true;
+    updateAudioVisualizerState("revealed");
     $("feedback").textContent = `เฉลย: “${title}” — ${artist} · รอบถัดไปใน 7 วินาที`;
     $("feedback").className = "feedback success";
     document.querySelectorAll(".answer-button").forEach(button => {
@@ -2176,8 +2435,36 @@ window.songTriviaPartyGame = {
     questionIndex = index;
     showQuestion();
   },
+  triggerCountdown,
+  setReadyProgress: (readyCount, totalCount) => {
+    const badgeEl = $("countdownReadyBadge");
+    if (badgeEl) badgeEl.textContent = `รอเพื่อนๆ... (${readyCount}/${totalCount} คนพร้อมแล้ว)`;
+    if ($("feedback") && !answered && !timerStarted) {
+      $("feedback").textContent = `เพื่อนๆ พร้อมแล้ว ${readyCount}/${totalCount} คน...`;
+    }
+  },
   showResults
 };
+
+window.addEventListener("keydown", event => {
+  if ($("game").hidden || answered || !timerStarted) return;
+  const tag = event.target.tagName?.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+
+  const key = event.key.toUpperCase();
+  let index = -1;
+  if (key === "A" || key === "1") index = 0;
+  else if (key === "B" || key === "2") index = 1;
+  else if (key === "C" || key === "3") index = 2;
+  else if (key === "D" || key === "4") index = 3;
+
+  if (index >= 0) {
+    const buttons = document.querySelectorAll(".answer-button");
+    if (buttons[index] && !buttons[index].disabled) {
+      buttons[index].click();
+    }
+  }
+});
 
 $("startForm").addEventListener("submit", event => {
   event.preventDefault();
@@ -2334,19 +2621,9 @@ window.songTriviaCatalog = {
   loadArtists: loadArtistChoices
 };
 
-/* ─── Keyboard shortcuts A/B/C/D ─── */
-document.addEventListener("keydown", (event) => {
-  if ($("game").hidden) return;
-  if (answered || !timerStarted) return;
-  const key = event.key.toUpperCase();
-  if (!["A","B","C","D"].includes(key)) return;
-  const buttons = [...document.querySelectorAll(".answer-button:not(:disabled)")];
-  const index = key.charCodeAt(0) - 65;
-  if (buttons[index]) buttons[index].click();
-});
-
-/* ─── Page Visibility API – pause timer when tab hidden ─── */
+/* ─── Page Visibility API – pause timer when tab hidden (solo mode only) ─── */
 document.addEventListener("visibilitychange", () => {
+  if (window.songTriviaParty?.active) return;
   if (!timerStarted || answered) return;
   if (document.hidden) {
     /* tab hidden – pause */
@@ -2375,7 +2652,8 @@ document.addEventListener("visibilitychange", () => {
 /* ─── Share score button ─── */
 $("shareScoreBtn").addEventListener("click", () => {
   const total = gameSongs.length * 100;
-  const text = `ฉันได้ ${score}/${total} คะแนน (ตอบถูก ${correctAnswers}/${gameSongs.length} ข้อ) ในเกมทายเพลง! มาลองเล่นกันดูที่ https://tune-battle-pages.pages.dev/`;
+  const shareOrigin = window.location.origin || "https://tune-battle-pages.pages.dev";
+  const text = `ฉันได้ ${score}/${total} คะแนน (ตอบถูก ${correctAnswers}/${gameSongs.length} ข้อ) ในเกมทายเพลง! มาลองเล่นกันดูที่ ${shareOrigin}/`;
   if (navigator.share) {
     navigator.share({ title: "ทายเพลง", text }).catch(() => {});
   } else {

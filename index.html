@@ -27,7 +27,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=Noto+Sans+Thai:wght@400;500;700;800;900&display=swap">
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">ข้ามไปยังเนื้อหาหลัก</a>
@@ -361,44 +361,111 @@
     </section>
 
     <section class="screen quiz-screen" id="game" hidden>
-      <button id="gameSettingsButton" class="secondary-button game-settings-button" type="button">← กลับไปตั้งค่า</button>
+      <div id="autoplayUnlockBanner" class="autoplay-unlock-banner" hidden>
+        <div class="unlock-banner-content">
+          <span class="unlock-icon">🔊</span>
+          <div class="unlock-text">
+            <strong>แตะที่นี่เพื่อเปิดเสียงเพลง</strong>
+            <small>เบราว์เซอร์ต้องการการแตะเพื่อเริ่มเล่นเสียง</small>
+          </div>
+          <button type="button" id="autoplayUnlockBtn" class="unlock-action-btn">เปิดเสียงเลย ⚡</button>
+        </div>
+      </div>
+
+      <div class="quiz-top-bar">
+        <button id="gameSettingsButton" class="secondary-button game-settings-button" type="button">← กลับไปตั้งค่า</button>
+        <div class="game-mode-badge" id="gameModeBadge">🎮 กำลังทายเพลง</div>
+      </div>
+
       <div class="quiz-header">
         <div>
           <p class="eyebrow" id="playerGreeting">พร้อมหรือยัง?</p>
           <p class="question-count" id="round">ข้อที่ 1 <span>/ 10</span></p>
         </div>
-        <div class="score-pill"><span aria-hidden="true">✦</span> <span id="score">0</span><small>PTS</small></div>
-        <div class="streak-pill" id="streakPill" hidden><span class="streak-fire">🔥</span><span id="streakCount">0</span><small>STREAK</small></div>
+        <div class="quiz-stats-group">
+          <div class="score-pill"><span aria-hidden="true">✦</span> <span id="score">0</span><small>PTS</small></div>
+          <div class="streak-pill" id="streakPill" hidden><span class="streak-fire">🔥</span><span id="streakCount">0</span><small>STREAK</small></div>
+        </div>
       </div>
 
       <div class="progress-track" role="progressbar" aria-label="ความคืบหน้า" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
         <div class="progress-fill" id="progressFill"></div>
       </div>
 
-      <article class="question-card">
-        <div class="question-icon" aria-hidden="true"><span>♫</span></div>
-        <p class="question-label" id="questionLabel">ฟังเพลงที่เล่นอัตโนมัติ แล้วตอบให้ไวที่สุด</p>
-        <h1 id="questionText">เพลงนี้ชื่ออะไร?</h1>
-        <div id="playBtn" class="music-status-card" role="status" aria-live="polite">
-          <div class="waveform-bars" id="waveformBars" aria-hidden="true">
-            <span></span><span></span><span></span><span></span><span></span>
+      <article class="question-card" id="questionCard">
+        <!-- Synchronized Countdown Overlay inside the music card -->
+        <div id="syncCountdownOverlay" class="sync-countdown-overlay" hidden aria-hidden="true">
+          <div class="countdown-pulse-ring"></div>
+          <div class="countdown-modal-box">
+            <div class="countdown-badge-pulse" id="countdownReadyBadge">เตรียมตัวให้พร้อม...</div>
+            <div class="countdown-digit-display" id="countdownDigit">3</div>
+            <p class="countdown-subtext" id="countdownSubtext">เพลงกำลังจะเล่นพร้อมกัน!</p>
           </div>
-          <span id="playLabel">กำลังเตรียมเพลง...</span>
         </div>
-        <div class="volume-controls" role="group" aria-label="ปรับระดับเสียง">
-          <button id="volumeDownBtn" class="volume-button" type="button" aria-label="ลดเสียง">−</button>
-          <span id="volumeLevel" class="volume-level" aria-live="polite">50%</span>
-          <button id="volumeUpBtn" class="volume-button" type="button" aria-label="เพิ่มเสียง">+</button>
+
+        <div class="question-card-header">
+          <div class="question-icon" aria-hidden="true"><span>♫</span></div>
+          <div class="question-card-meta">
+            <p class="question-label" id="questionLabel">ฟังเพลงที่เล่นอัตโนมัติ แล้วตอบให้ไวที่สุด</p>
+            <h1 id="questionText">เพลงนี้ชื่ออะไร?</h1>
+          </div>
+          <!-- Circular Timer Ring -->
+          <div class="circular-timer-container" id="gameTimerCard" aria-label="เวลาที่เหลือ">
+            <svg class="circular-timer-svg" viewBox="0 0 100 100" aria-hidden="true">
+              <circle class="circular-timer-bg" cx="50" cy="50" r="45"></circle>
+              <circle class="circular-timer-progress" id="circularTimerProgress" cx="50" cy="50" r="45"></circle>
+            </svg>
+            <div class="circular-timer-content">
+              <span class="timer-number" id="timer">10</span>
+              <small class="timer-unit">วิ</small>
+            </div>
+          </div>
         </div>
-        <p class="preview-note">เพลงเล่นอัตโนมัติ ตอบให้ถูกก่อนหมดเวลา</p>
+
+        <!-- Interactive Vinyl Stage & Sound Arena -->
+        <div class="music-stage-hub" id="musicStageHub">
+          <div class="vinyl-disc-wrapper" id="vinylDiscWrapper">
+            <div class="vinyl-glow-aura" id="vinylGlowAura"></div>
+            <div class="vinyl-disc" id="vinylDisc" aria-hidden="true">
+              <div class="vinyl-groove-lines"></div>
+              <div class="vinyl-center-badge">
+                <span class="vinyl-note-icon">♫</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="music-stage-info">
+            <div id="playBtn" class="music-status-card" role="status" aria-live="polite">
+              <div class="waveform-bars" id="waveformBars" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+              </div>
+              <span id="playLabel">กำลังเตรียมเพลง...</span>
+            </div>
+
+            <div class="volume-controls" role="group" aria-label="ปรับระดับเสียง">
+              <span class="volume-icon-label" aria-hidden="true">🔊</span>
+              <button id="volumeDownBtn" class="volume-button" type="button" aria-label="ลดเสียง">−</button>
+              <span id="volumeLevel" class="volume-level" aria-live="polite">50%</span>
+              <button id="volumeUpBtn" class="volume-button" type="button" aria-label="เพิ่มเสียง">+</button>
+            </div>
+          </div>
+        </div>
+
+        <p class="preview-note">เพลงจะเล่นพร้อมกันทุกคน • เลือกคำตอบที่ถูกให้เร็วที่สุดเพื่อรับคะแนนสูงสุด</p>
         <audio id="audio" preload="auto" crossorigin="anonymous"></audio>
+
         <div class="timer-row">
           <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
-          <p class="timer" aria-live="polite"><span id="timer">10</span><small>วินาที</small></p>
         </div>
       </article>
 
-      <div id="answers" class="answer-grid" role="group" aria-label="ตัวเลือกคำตอบ"></div>
+      <div class="answers-container-wrapper">
+        <div class="keyboard-tip-bar" id="keyboardTipBar">
+          <span>⌨️ ปุ่มลัด: กด A, B, C, D หรือ 1, 2, 3, 4 เพื่อตอบได้ทันที</span>
+        </div>
+        <div id="answers" class="answer-grid" role="group" aria-label="ตัวเลือกคำตอบ"></div>
+      </div>
+
       <section id="liveAnswersPanel" class="live-answers-panel" aria-live="polite" hidden>
         <h2>คำตอบของเพื่อนๆ</h2>
         <ul id="liveAnswersList"></ul>

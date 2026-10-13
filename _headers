@@ -4,6 +4,7 @@
   Strict-Transport-Security: max-age=31536000
   X-Frame-Options: DENY
   Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; media-src 'self' blob: https://*.apple.com https://*.mzstatic.com https://*.deezer.com https://*.dzcdn.net; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.deezer.com https://itunes.apple.com; img-src 'self' data: https: blob:;
 
 /favicon.svg
   Cache-Control: public, max-age=86400

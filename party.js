@@ -45,6 +45,7 @@
   let roomResponseTimer = null;
   let requestStateInterval = null;
   let roomStateReceived = false;
+  let hostClockOffset = 0; // Calibration offset: hostTime - clientTime
 
   function showScreen(screenId) {
     screens.forEach(id => {
@@ -74,34 +75,59 @@
     party.playbackScheduledIndex = -1;
     party.roundIndex = index;
     if (party.isHost) {
+      // 8-second safety fallback timeout in case of dropped connection
       party.roundReadyTimer = window.setTimeout(() => {
         startRoundPlayback().catch(error => {
           console.error("Unable to start the synchronized round:", error);
           setMessage("feedback", error.message, true);
         });
-      }, 12000);
+      }, 8000);
     }
   }
 
-  function scheduleRoundPlayback(index, startAt) {
+  function scheduleRoundPlayback(index, startAt, countdownMs = 2500) {
     if (party.playbackScheduledIndex === index) return;
     party.playbackScheduledIndex = index;
     party.roundStartAt = startAt;
-    const delay = Math.max(0, startAt - Date.now());
-    window.setTimeout(() => {
-      if (!party.gameRunning || party.roundIndex !== index || party.winner) return;
-      window.songTriviaPartyGame.playPreview();
-    }, delay);
+
+    // Correct for clock skew: calculate remaining delay in client time
+    const hostNow = party.isHost ? Date.now() : (Date.now() + hostClockOffset);
+    let delay = startAt - hostNow;
+    if (!Number.isFinite(delay) || delay < 0) delay = 0;
+    const duration = delay > 0 ? delay : countdownMs;
+
+    // Trigger visual countdown with synchronized playback start
+    if (window.songTriviaPartyGame?.triggerCountdown) {
+      window.songTriviaPartyGame.triggerCountdown({
+        durationMs: duration,
+        onStart: () => {
+          if (!party.gameRunning || party.roundIndex !== index || party.winner) return;
+          window.songTriviaPartyGame.playPreview(startAt);
+        }
+      });
+    } else {
+      window.setTimeout(() => {
+        if (!party.gameRunning || party.roundIndex !== index || party.winner) return;
+        window.songTriviaPartyGame.playPreview(startAt);
+      }, delay);
+    }
   }
 
   async function startRoundPlayback() {
     if (!party.isHost || !party.gameRunning || party.roundStartSent) return;
     party.roundStartSent = true;
     clearTimeout(party.roundReadyTimer);
-    const startAt = Date.now() + 1800;
+    const countdownMs = 2500; // Synchronized 2.5s 3-2-1 countdown
+    const startAt = Date.now() + countdownMs;
     const index = party.roundIndex;
-    await send("round-go", { roomCode: party.roomCode, index, startAt });
-    scheduleRoundPlayback(index, startAt);
+    await send("round-go", {
+      roomCode: party.roomCode,
+      index,
+      startAt,
+      countdownMs,
+      hostTime: Date.now()
+    });
+    scheduleRoundPlayback(index, startAt, countdownMs);
   }
 
   function tryStartReadyRound() {
@@ -334,10 +360,31 @@
       party.correctCounts[playerId] = (party.correctCounts[playerId] || 0) + 1;
     }
 
+    // Auto-advance if all active players have already submitted their answers
+    if (party.isHost) {
+      const active = activePlayers();
+      if (active.length > 0 && active.every(player => party.answeredPlayers.has(player.id))) {
+        window.setTimeout(() => {
+          if (!party.winner && !party.resultSending) {
+            endQuestion().catch(console.error);
+          }
+        }, 750);
+      }
+    }
   }
 
   async function handleEvent(payload) {
     if (!payload || payload.senderId === party.playerId) return;
+
+    // Track host clock offset whenever host transmits a timestamp
+    if (!party.isHost && typeof payload.hostTime === "number") {
+      const transitEstimate = 35; // typical Supabase broadcast half-RTT
+      const calculatedOffset = payload.hostTime - (Date.now() - transitEstimate);
+      hostClockOffset = hostClockOffset === 0
+        ? calculatedOffset
+        : Math.round(hostClockOffset * 0.7 + calculatedOffset * 0.3);
+    }
+
     switch (payload.type) {
       case "request-state":
         if (!party.isHost) break;
@@ -452,7 +499,18 @@
           payload.index !== window.songTriviaPartyGame.getQuestionIndex() ||
           !activePlayers().some(player => player.id === payload.senderId)) break;
         party.readyPlayers.add(payload.senderId);
+        send("ready-update", {
+          roomCode: party.roomCode,
+          index: payload.index,
+          readyCount: party.readyPlayers.size,
+          totalCount: activePlayers().length,
+          hostTime: Date.now()
+        }).catch(console.warn);
         tryStartReadyRound();
+        break;
+      case "ready-update":
+        if (party.isHost || payload.roomCode !== party.roomCode) break;
+        window.songTriviaPartyGame?.setReadyProgress(payload.readyCount, payload.totalCount);
         break;
       case "live-answer":
         if (!party.gameRunning || !party.roundSettings.liveAnswers ||
@@ -467,13 +525,18 @@
           payload.index !== window.songTriviaPartyGame.getQuestionIndex()) break;
         party.roundStartSent = true;
         clearTimeout(party.roundReadyTimer);
-        scheduleRoundPlayback(payload.index, payload.startAt);
+        scheduleRoundPlayback(payload.index, payload.startAt, payload.countdownMs || 2500);
         break;
       case "next-round":
         if (party.isHost || !party.gameRunning || payload.roomCode !== party.roomCode) break;
         party.winner = null;
         party.answeredPlayers.clear();
-        party.song = window.songTriviaPartyGame.getSongs()[payload.index];
+        const nextRoundSongs = window.songTriviaPartyGame.getSongs();
+        if (nextRoundSongs[payload.index] && payload.previewUrl) {
+          nextRoundSongs[payload.index].previewUrl = payload.previewUrl;
+          nextRoundSongs[payload.index].provider = payload.provider || "Deezer";
+        }
+        party.song = nextRoundSongs[payload.index];
         party.roundStartedAt = 0;
         resetRoundSync(payload.index);
         window.songTriviaPartyGame.loadRound(payload.index);
@@ -786,8 +849,9 @@
         });
       }
       if (party.roundStartSent && party.roundStartAt) {
-        if (Date.now() >= party.roundStartAt) {
-          window.songTriviaPartyGame.playPreview();
+        const hostNow = party.isHost ? Date.now() : (Date.now() + hostClockOffset);
+        if (hostNow >= party.roundStartAt) {
+          window.songTriviaPartyGame.playPreview(party.roundStartAt);
         } else {
           scheduleRoundPlayback(index, party.roundStartAt);
         }
@@ -907,7 +971,13 @@
         );
         joiningIds.forEach(playerId => party.lateJoinQueue.delete(playerId));
         (async () => {
-          await send("next-round", { roomCode: party.roomCode, index: nextIndex });
+          await send("next-round", {
+            roomCode: party.roomCode,
+            index: nextIndex,
+            previewUrl: party.song?.previewUrl,
+            provider: party.song?.provider,
+            hostTime: Date.now()
+          });
           if (joiningIds.length) {
             await send("late-game-start", {
               roomCode: party.roomCode,
@@ -950,13 +1020,17 @@
         time: questionTime,
         scores: party.scores,
         correctCounts: party.correctCounts,
-        settings: party.roundSettings
+        settings: party.roundSettings,
+        hostTime: Date.now()
       }).catch(error => {
         setMessage("feedback", `เริ่มเกมออนไลน์ไม่ได้: ${error.message}`, true);
       });
     },
     getFinalRank: () => party.finalRank,
     getFinalStandings: () => party.finalStandings,
+    getHostTime: () => party.isHost ? Date.now() : (Date.now() + hostClockOffset),
+    toLocalTime: (hostTime) => party.isHost ? hostTime : (hostTime - hostClockOffset),
+    clockOffset: () => hostClockOffset,
     requestReturnToRoom,
     leave: () => leaveParty(),
     joinRoom: (rawCode) => {
