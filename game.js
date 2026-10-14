@@ -532,8 +532,44 @@ function normalizeSongTitle(title) {
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\s*[\(\[](?:remaster(?:ed)?|version|live|radio edit|feat\.?|ft\.?|acoustic|bonus track|deluxe)[^\)\]]*[\)\]]/gi, "")
+    .replace(/\s*-\s*(?:remaster(?:ed)?|version|live|radio edit|feat\.?|ft\.?|acoustic|bonus track|deluxe).*/gi, "")
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function isArtistMatch(resultArtist, targetArtist) {
+  if (!resultArtist || !targetArtist) return false;
+  const targetNorm = normalizeArtistName(targetArtist);
+  const resultNorm = normalizeArtistName(resultArtist);
+  if (targetNorm === resultNorm) return true;
+
+  const targetLower = targetArtist.trim().toLowerCase();
+  const resultLower = resultArtist.trim().toLowerCase();
+  if (targetLower === resultLower) return true;
+
+  const parts = resultLower
+    .split(/[,&/]|(?:\s+(?:feat\.?|ft\.?|featuring|x)\s+)/i)
+    .map(p => p.trim());
+  return parts.some(p => p === targetLower || normalizeArtistName(p) === targetNorm);
+}
+
+function calculateScore(elapsedMs, durationMs = 15000) {
+  const duration = Math.max(1000, Number(durationMs) || 15000);
+  if (elapsedMs === null || elapsedMs === undefined) return 0;
+  const num = Number(elapsedMs);
+  if (!Number.isFinite(num) || num >= duration) return 0;
+  const elapsed = Math.max(0, num);
+  return Math.max(0, Math.ceil((1 - elapsed / duration) * 100));
+}
+
+if (typeof window !== "undefined") {
+  window.calculateScore = calculateScore;
+  window.normalizeSongTitle = normalizeSongTitle;
+  window.normalizeArtistName = normalizeArtistName;
+  window.isArtistMatch = isArtistMatch;
+}
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { calculateScore, normalizeSongTitle, normalizeArtistName, isArtistMatch };
 }
 
 function registerArtistDetails(artist) {
@@ -648,12 +684,11 @@ async function loadAppleArtistCatalog(artistName) {
       console.warn(`Apple Music artist verification partially failed for ${artistName}.`);
     }
 
-    const normalizedArtist = normalizeArtistName(artistName);
     const matchingArtistResults = uniqueSongs(successfulResults.flatMap(result => result.value).filter(result =>
-      normalizeArtistName(result.artistName || "").includes(normalizedArtist)
+      isArtistMatch(result.artistName || "", artistName)
     ).map(result => ({ ...result, id: String(result.trackId) })));
     const exactCaseResults = matchingArtistResults.filter(result =>
-      result.artistName?.includes(artistName)
+      result.artistName?.toLowerCase() === artistName.toLowerCase()
     );
     const verifiedResults = exactCaseResults.length ? exactCaseResults : matchingArtistResults;
 
@@ -1661,6 +1696,7 @@ function triggerCountdown({ durationMs = 2500, onStart }) {
   }
 
   overlay.hidden = false;
+  overlay.removeAttribute("aria-hidden");
   if (badgeEl) badgeEl.textContent = window.songTriviaParty?.active ? "ทุกคนพร้อมแล้ว!" : "เตรียมตัวให้พร้อม!";
   if (subtextEl) subtextEl.textContent = "เพลงกำลังจะเริ่ม...";
 
@@ -1688,6 +1724,7 @@ function triggerCountdown({ durationMs = 2500, onStart }) {
       clearInterval(countdownInterval);
       countdownInterval = null;
       overlay.hidden = true;
+      overlay.setAttribute("aria-hidden", "true");
       if (onStart) onStart();
     }
   };
@@ -1752,7 +1789,10 @@ function showQuestion() {
     countdownInterval = null;
   }
   const overlay = $("syncCountdownOverlay");
-  if (overlay) overlay.hidden = true;
+  if (overlay) {
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+  }
   hideAutoplayPrompt();
   updateAudioVisualizerState("idle");
 
@@ -1855,23 +1895,27 @@ async function findPreview(song, country) {
   }
 
   const data = await response.json();
-  return data.results.find(result =>
-    result.previewUrl &&
-    result.trackName &&
-    result.artistName &&
-    result.trackName.toLowerCase() === song.title.toLowerCase() &&
-    result.artistName.toLowerCase().includes(song.artist.toLowerCase())
-  );
+  const targetTitleNorm = normalizeSongTitle(song.title);
+  return (data.results || []).find(result => {
+    if (!result.previewUrl || !result.trackName || !result.artistName) return false;
+    const titleMatches =
+      result.trackName.toLowerCase() === song.title.toLowerCase() ||
+      normalizeSongTitle(result.trackName) === targetTitleNorm;
+    return titleMatches && isArtistMatch(result.artistName, song.artist);
+  });
 }
 
 async function findDeezerPreview(song) {
   const term = encodeURIComponent(`"${song.title}" ${song.artist}`);
   const data = await fetchDeezer(`https://api.deezer.com/search?q=${term}`);
-  return data.data.find(result =>
-    result.preview &&
-    result.title.toLowerCase() === song.title.toLowerCase() &&
-    result.artist.name.toLowerCase().includes(song.artist.toLowerCase())
-  );
+  const targetTitleNorm = normalizeSongTitle(song.title);
+  return (data.data || []).find(result => {
+    if (!result.preview || !result.title || !result.artist?.name) return false;
+    const titleMatches =
+      result.title.toLowerCase() === song.title.toLowerCase() ||
+      normalizeSongTitle(result.title) === targetTitleNorm;
+    return titleMatches && isArtistMatch(result.artist.name, song.artist);
+  });
 }
 
 async function setPreview(song, result, provider) {
@@ -1953,6 +1997,29 @@ async function loadPreview(song) {
   }
 }
 
+function skipUnplayableQuestion(requestId = previewRequestId) {
+  activeSong = null;
+  clearInterval(timer);
+  timerStarted = false;
+  seconds = questionTime;
+  questionStartedAt = 0;
+  $("timer").textContent = seconds;
+  $("timerFill").style.width = "100%";
+  const circProgress = $("circularTimerProgress");
+  if (circProgress) circProgress.style.strokeDashoffset = 0;
+  setAnswerButtonsEnabled(false);
+  updateAudioVisualizerState("idle");
+  $("playLabel").textContent = "ข้ามไปยังข้อถัดไป...";
+  $("playBtn").disabled = true;
+  $("feedback").textContent = "เล่นเพลงไม่ได้ กำลังข้ามไปยังข้อถัดไป...";
+  $("feedback").className = "feedback error";
+  setTimeout(() => {
+    if (requestId === previewRequestId && !answered) {
+      finishQuestion(null);
+    }
+  }, 2000);
+}
+
 async function loadDeezerFallback(song, requestId = previewRequestId) {
   if (requestId !== previewRequestId) return;
   if (fallbackAttempted) return;
@@ -1972,26 +2039,103 @@ async function loadDeezerFallback(song, requestId = previewRequestId) {
   } catch (error) {
     if (requestId !== previewRequestId) return;
     console.error("Unable to load the Deezer fallback preview:", error);
-    activeSong = null;
-    clearInterval(timer);
-    timerStarted = false;
-    seconds = questionTime;
-    questionStartedAt = 0;
-    $("timer").textContent = seconds;
-    $("timerFill").style.width = "100%";
-    const circProgress = $("circularTimerProgress");
-    if (circProgress) circProgress.style.strokeDashoffset = 0;
-    setAnswerButtonsEnabled(false);
-    updateAudioVisualizerState("idle");
-    $("playLabel").textContent = "ข้ามไปยังข้อถัดไป...";
-    $("playBtn").disabled = true;
-    $("feedback").textContent = "โหลดเพลงไม่สำเร็จ กำลังข้ามไปยังข้อถัดไป...";
-    $("feedback").className = "feedback error";
-    setTimeout(() => {
-      if (requestId === previewRequestId && !answered) {
-        finishQuestion(null);
+    skipUnplayableQuestion(requestId);
+  }
+}
+
+async function loadDeezerRecoveryOrAppleFallback(song, requestId = previewRequestId) {
+  if (requestId !== previewRequestId) return;
+  if (fallbackAttempted) return;
+  fallbackAttempted = true;
+  $("playBtn").disabled = true;
+  $("playLabel").textContent = "กำลังกู้คืนเพลง...";
+  $("feedback").textContent = "กำลังขอลิงก์เพลงใหม่จาก Deezer...";
+  $("feedback").className = "feedback";
+
+  try {
+    // 1. Try to fetch a fresh preview URL directly from Deezer without cache using track/{id}
+    if (song?.id && /^\d+$/.test(String(song.id))) {
+      const cacheKey = `track:${song.id}`;
+      deezerCache.delete(cacheKey);
+      try {
+        const fresh = await fetchDeezer(`https://api.deezer.com/track/${song.id}`);
+        if (requestId !== previewRequestId) return;
+        const freshPreview = fresh?.preview;
+        if (freshPreview && freshPreview !== $("audio").currentSrc) {
+          await setPreview(song, fresh, "Deezer");
+          return;
+        }
+      } catch (err) {
+        console.warn("Unable to refresh Deezer track preview via ID:", err);
       }
-    }, 2000);
+    }
+
+    // 2. If Deezer refresh fails or has no ID, fallback to Apple Music
+    $("feedback").textContent = "เพลง Deezer เล่นไม่ได้ กำลังค้นหาเพลงจาก Apple Music...";
+    let result = await findPreview(song, "th");
+    if (requestId !== previewRequestId) return;
+    if (!result) {
+      result = await findPreview(song, "us");
+      if (requestId !== previewRequestId) return;
+    }
+    if (result) {
+      await setPreview(song, result, "Apple Music");
+      return;
+    }
+
+    throw new Error(`No fallback preview found for ${song.title}`);
+  } catch (error) {
+    if (requestId !== previewRequestId) return;
+    console.error("Unable to load Deezer recovery or Apple fallback preview:", error);
+    skipUnplayableQuestion(requestId);
+  }
+}
+
+let currentTimerStartEpoch = 0;
+let currentTargetStartAt = 0;
+
+function updateTimerTick(startEpoch, targetStartAt = 0) {
+  const totalMs = questionTime * 1000;
+  const now = Date.now();
+  const elapsed = (targetStartAt && targetStartAt > 0)
+    ? Math.max(0, now - startEpoch)
+    : (timerPausedElapsed + (performance.now() - questionStartedAt));
+  const remaining = Math.max(0, totalMs - elapsed);
+  seconds = Math.ceil(remaining / 1000);
+  $("timer").textContent = seconds;
+
+  const pct = Math.max(0, Math.min(100, (remaining / totalMs) * 100));
+  $("timerFill").style.width = `${pct}%`;
+
+  const circProgress = $("circularTimerProgress");
+  if (circProgress) {
+    const circOffset = 283 - (283 * pct) / 100;
+    circProgress.style.strokeDashoffset = circOffset;
+  }
+
+  const timerCard = $("gameTimerCard");
+  if (seconds <= 5) {
+    $("timerFill").classList.add("low");
+    if (timerCard) timerCard.classList.add("urgent");
+  } else {
+    $("timerFill").classList.remove("low");
+    if (timerCard) timerCard.classList.remove("urgent");
+  }
+
+  // Periodic gentle drift correction check (every 500ms after initial second)
+  const audio = $("audio");
+  if (audio && !audio.paused && targetStartAt && elapsed > 800) {
+    const expectedTime = elapsed / 1000;
+    if (Math.abs(audio.currentTime - expectedTime) > 0.45 && expectedTime < questionTime) {
+      try { audio.currentTime = expectedTime; } catch (_) {}
+    }
+  }
+
+  if (remaining <= 0) {
+    clearInterval(timer);
+    $("audio").pause();
+    updateAudioVisualizerState("idle");
+    finishQuestion(null);
   }
 }
 
@@ -2006,55 +2150,17 @@ function beginTimer(targetStartAt = 0) {
   $("playBtn").classList.add("playing");
   updateAudioVisualizerState("playing");
 
-  const totalMs = questionTime * 1000;
-  const startEpoch = (targetStartAt && targetStartAt > 0)
+  currentTargetStartAt = targetStartAt;
+  currentTimerStartEpoch = (targetStartAt && targetStartAt > 0)
     ? (window.songTriviaParty?.active && window.songTriviaParty.toLocalTime
         ? window.songTriviaParty.toLocalTime(targetStartAt)
         : targetStartAt)
     : Date.now();
 
+  clearInterval(timer);
+  updateTimerTick(currentTimerStartEpoch, currentTargetStartAt);
   timer = setInterval(() => {
-    const now = Date.now();
-    const elapsed = (targetStartAt && targetStartAt > 0)
-      ? Math.max(0, now - startEpoch)
-      : (timerPausedElapsed + (performance.now() - questionStartedAt));
-    const remaining = Math.max(0, totalMs - elapsed);
-    seconds = Math.ceil(remaining / 1000);
-    $("timer").textContent = seconds;
-
-    const pct = Math.max(0, Math.min(100, (remaining / totalMs) * 100));
-    $("timerFill").style.width = `${pct}%`;
-
-    const circProgress = $("circularTimerProgress");
-    if (circProgress) {
-      const circOffset = 283 - (283 * pct) / 100;
-      circProgress.style.strokeDashoffset = circOffset;
-    }
-
-    const timerCard = $("gameTimerCard");
-    if (seconds <= 5) {
-      $("timerFill").classList.add("low");
-      if (timerCard) timerCard.classList.add("urgent");
-    } else {
-      $("timerFill").classList.remove("low");
-      if (timerCard) timerCard.classList.remove("urgent");
-    }
-
-    // Periodic gentle drift correction check (every 500ms after initial second)
-    const audio = $("audio");
-    if (audio && !audio.paused && targetStartAt && elapsed > 800) {
-      const expectedTime = elapsed / 1000;
-      if (Math.abs(audio.currentTime - expectedTime) > 0.45 && expectedTime < questionTime) {
-        try { audio.currentTime = expectedTime; } catch (_) {}
-      }
-    }
-
-    if (remaining <= 0) {
-      clearInterval(timer);
-      $("audio").pause();
-      updateAudioVisualizerState("idle");
-      finishQuestion(null);
-    }
+    updateTimerTick(currentTimerStartEpoch, currentTargetStartAt);
   }, 100);
 }
 
@@ -2143,8 +2249,8 @@ function finishQuestion(answer) {
   const current = gameSongs[questionIndex] || {};
   const finalAnswer = selectedAnswer;
   const isCorrect = finalAnswer === current.title;
-  const elapsed = selectedAnswerElapsed ?? questionTime * 1000;
-  const points = Math.max(0, Math.ceil((1 - elapsed / (questionTime * 1000)) * 100));
+  const elapsed = selectedAnswerElapsed ?? (questionTime * 1000);
+  const points = calculateScore(elapsed, questionTime * 1000);
   const artist = current.artist || activeSong?.artist || "";
   const trackUrl = activeSong?.trackUrl || current.trackUrl;
   const provider = activeSong?.provider || current.provider || "Apple Music";
@@ -2547,23 +2653,15 @@ $("audio").addEventListener("error", () => {
   const audio = $("audio");
   if (activeSong && audio.currentSrc === activeSong.previewUrl && !answered) {
     console.error("The song preview audio could not be loaded.");
-    if (activeSong.provider === "Apple Music" && !fallbackAttempted) {
-      loadDeezerFallback(gameSongs[questionIndex]);
+    if (!fallbackAttempted) {
+      const current = gameSongs[questionIndex] || activeSong;
+      if (activeSong.provider === "Apple Music") {
+        loadDeezerFallback(current);
+      } else {
+        loadDeezerRecoveryOrAppleFallback(current);
+      }
     } else {
-      activeSong = null;
-      clearInterval(timer);
-      timerStarted = false;
-      seconds = questionTime;
-      $("timer").textContent = seconds;
-      $("timerFill").style.width = "100%";
-      setAnswerButtonsEnabled(false);
-      $("feedback").textContent = "เล่นเพลงไม่ได้ กำลังข้ามไปยังข้อถัดไป...";
-      $("feedback").className = "feedback error";
-      $("playLabel").textContent = "ข้ามไปยังข้อถัดไป...";
-      $("playBtn").disabled = true;
-      setTimeout(() => {
-        if (!answered) finishQuestion(null);
-      }, 2000);
+      skipUnplayableQuestion(previewRequestId);
     }
   }
 });
@@ -2631,21 +2729,18 @@ document.addEventListener("visibilitychange", () => {
     timerPausedElapsed += performance.now() - questionStartedAt;
     timerPausedAt = performance.now();
   } else {
-    /* tab visible – resume */
+    /* tab visible – resume timer and audio */
     questionStartedAt = performance.now();
+    updateTimerTick(currentTimerStartEpoch, currentTargetStartAt);
+    clearInterval(timer);
     timer = setInterval(() => {
-      const elapsed = timerPausedElapsed + (performance.now() - questionStartedAt);
-      const remaining = Math.max(0, questionTime * 1000 - elapsed);
-      seconds = Math.ceil(remaining / 1000);
-      $("timer").textContent = seconds;
-      $("timerFill").style.width = `${(remaining / (questionTime * 1000)) * 100}%`;
-      if (seconds <= 5) $("timerFill").classList.add("low");
-      if (remaining <= 0) {
-        clearInterval(timer);
-        $("audio").pause();
-        finishQuestion(null);
-      }
+      updateTimerTick(currentTimerStartEpoch, currentTargetStartAt);
     }, 100);
+    const audio = $("audio");
+    if (audio && activeSong && audio.paused && !audio.ended && seconds > 0) {
+      audio.play().catch(() => {});
+      updateAudioVisualizerState("playing");
+    }
   }
 });
 

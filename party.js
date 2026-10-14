@@ -9,6 +9,7 @@
   const party = {
     active: false,
     isHost: false,
+    hostId: null,
     channel: null,
     roomCode: "",
     playerId: "",
@@ -339,7 +340,11 @@
       ? Math.max(0, Math.min(duration, Number(elapsedMs)))
       : duration;
     const correct = answer === party.song?.title;
-    const points = correct ? Math.max(0, Math.ceil((1 - elapsed / duration) * 100)) : 0;
+    const points = correct
+      ? (typeof window.calculateScore === "function"
+          ? window.calculateScore(elapsed, duration)
+          : Math.max(0, Math.ceil((1 - elapsed / duration) * 100)))
+      : 0;
     party.answeredPlayers.add(playerId);
     party.roundAnswers[playerId] = { answer, correct, points };
     if (party.roundSettings.liveAnswers && answer !== null) {
@@ -383,6 +388,28 @@
       hostClockOffset = hostClockOffset === 0
         ? calculatedOffset
         : Math.round(hostClockOffset * 0.7 + calculatedOffset * 0.3);
+    }
+
+    // Security: Validate events that must originate strictly from the room's host
+    const hostOnlyEvents = [
+      "game-start",
+      "next-round",
+      "question-result",
+      "game-finished",
+      "round-go",
+      "ready-update",
+      "late-game-start",
+      "return-to-room",
+      "join-rejected",
+      "join-waiting"
+    ];
+
+    if (!party.isHost && hostOnlyEvents.includes(payload.type)) {
+      const effectiveHostId = party.hostId || presencePlayers().find(p => p.host)?.id;
+      if (effectiveHostId && payload.senderId !== effectiveHostId) {
+        console.warn(`Blocked unauthorized '${payload.type}' event from non-host (${payload.senderId})`);
+        return;
+      }
     }
 
     switch (payload.type) {
@@ -432,6 +459,11 @@
         break;
       case "room-state":
         if (party.isHost || payload.roomCode !== party.roomCode) break;
+        if (party.hostId && payload.senderId !== party.hostId && payload.hostId !== party.hostId) {
+          console.warn("Ignored room-state from untrusted sender:", payload.senderId);
+          break;
+        }
+        party.hostId = payload.hostId || payload.senderId;
         roomStateReceived = true;
         clearTimeout(roomResponseTimer);
         clearInterval(requestStateInterval);
@@ -446,6 +478,8 @@
         break;
       case "game-start":
         if (party.isHost || payload.roomCode !== party.roomCode) break;
+        if (!party.hostId) party.hostId = payload.senderId;
+        if (party.hostId && payload.senderId !== party.hostId) break;
         party.active = true;
         party.gameRunning = true;
         party.winner = null;
@@ -573,6 +607,7 @@
     party.name = profile.name;
     party.avatar = profile.avatar || "🎧";
     party.isHost = isHost;
+    party.hostId = isHost ? party.playerId : null;
     party.active = false;
     party.gameRunning = false;
     party.scores = {};
@@ -615,6 +650,37 @@
       });
     });
 
+    const checkHostStatus = () => {
+      if (party.isHost || !party.channel) return;
+      const effectiveHostId = party.hostId || presencePlayers().find(player => player.host)?.id;
+      if (!effectiveHostId) return;
+
+      const players = presencePlayers();
+      const hostStillPresent = players.some(player => player.id === effectiveHostId || player.host);
+
+      if (!hostStillPresent) {
+        console.warn("Host disconnected from the party room.");
+        clearTimeout(party.roundReadyTimer);
+        clearTimeout(party.resultAdvanceTimer);
+
+        if (party.gameRunning) {
+          party.gameRunning = false;
+          party.active = false;
+          $("audio")?.pause();
+          if (window.songTriviaPartyGame?.stopForSettings) {
+            window.songTriviaPartyGame.stopForSettings();
+          }
+          setMessage("roomMessage", "โฮสต์ออกจากห้องแล้ว การแข่งขันสิ้นสุดลง", true);
+          showScreen("partyRoom");
+          renderPlayers();
+          alert("โฮสต์ออกจากห้องแล้ว การแข่งขันสิ้นสุดลง");
+        } else {
+          setMessage("roomMessage", "โฮสต์ออกจากห้องแล้ว รอโฮสต์กลับเข้ามา หรือสร้างห้องใหม่", true);
+          renderPlayers();
+        }
+      }
+    };
+
     const onPresenceUpdate = () => {
       renderPlayers();
       if (party.isHost) {
@@ -622,8 +688,10 @@
           sendRoomState().catch(console.error);
         }
       } else {
+        checkHostStatus();
         const host = presencePlayers().find(player => player.host);
         if (host && !roomStateReceived) {
+          party.hostId = host.id;
           roomStateReceived = true;
           clearTimeout(roomResponseTimer);
           clearInterval(requestStateInterval);
@@ -640,6 +708,7 @@
 
     channel.on("presence", { event: "sync" }, onPresenceUpdate);
     channel.on("presence", { event: "join" }, onPresenceUpdate);
+    channel.on("presence", { event: "leave" }, onPresenceUpdate);
 
     await new Promise((resolve, reject) => {
       const timeout = window.setTimeout(() => reject(new Error("เชื่อมต่อห้องไม่ทันเวลา ลองใหม่อีกครั้ง")), 8000);
@@ -766,6 +835,7 @@
     party.active = false;
     party.gameRunning = false;
     party.isHost = false;
+    party.hostId = null;
     party.roomCode = "";
     party.winner = null;
     party.answeredPlayers.clear();
@@ -868,21 +938,34 @@
       }
       if (party.isHost) {
         if (party.winner) return true;
-        if (party.answeredPlayers.has(party.playerId)) {
-          if (answer === null) {
+        const triggerEndQuestionWithGrace = () => {
+          const remainingPlayers = activePlayers().filter(p => !party.answeredPlayers.has(p.id));
+          if (remainingPlayers.length > 0) {
+            window.setTimeout(() => {
+              if (!party.winner && !party.resultSending) {
+                endQuestion().catch(error => {
+                  console.error("Unable to finish the party question:", error);
+                  setMessage("feedback", error.message, true);
+                });
+              }
+            }, 1000);
+          } else {
             endQuestion().catch(error => {
               console.error("Unable to finish the party question:", error);
               setMessage("feedback", error.message, true);
             });
           }
+        };
+
+        if (party.answeredPlayers.has(party.playerId)) {
+          if (answer === null) {
+            triggerEndQuestionWithGrace();
+          }
           return true;
         }
         recordAnswer(party.playerId, answer, elapsedMs);
         if (answer === null && !party.winner) {
-          endQuestion().catch(error => {
-            console.error("Unable to finish the party question:", error);
-            setMessage("feedback", error.message, true);
-          });
+          triggerEndQuestionWithGrace();
         }
       } else {
         if (party.winner || party.answeredPlayers.has(party.playerId)) return true;
